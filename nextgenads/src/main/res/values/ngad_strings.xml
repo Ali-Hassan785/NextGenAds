@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ngad_ad_badge_label" translatable="false">Ad</string>
+    <!-- Placeholder CTA text; replaced at runtime by the ad's call-to-action. -->
+    <string name="ngad_cta_default">Install</string>
+</resources>

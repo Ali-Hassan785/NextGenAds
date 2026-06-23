@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NextGenAds demo"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Status: not initialized"
+            android:textColor="#333333"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <!-- 1. Consent + init -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="1. Consent"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnConsent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gather consent &amp; initialize" />
+
+        <!-- 2. Banner -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="2. Banner"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPreloadBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload banner" />
+
+        <Button
+            android:id="@+id/btnShowBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show preloaded banner" />
+
+        <Button
+            android:id="@+id/btnLoadShowBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; show banner on demand" />
+
+        <FrameLayout
+            android:id="@+id/bannerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="60dp" />
+
+        <!-- 3. Native -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="3. Native"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Template:"
+            android:textColor="#666666"
+            android:textSize="13sp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <RadioGroup
+                android:id="@+id/rgTemplate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rbSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Small" />
+
+                <RadioButton
+                    android:id="@+id/rbMedium"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:checked="true"
+                    android:text="Medium" />
+
+                <RadioButton
+                    android:id="@+id/rbLarge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Large" />
+
+                <RadioButton
+                    android:id="@+id/rbBanner"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Banner" />
+
+                <RadioButton
+                    android:id="@+id/rbMediaLeft"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Media-left" />
+            </RadioGroup>
+        </HorizontalScrollView>
+
+        <Button
+            android:id="@+id/btnPreloadNative"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload native" />
+
+        <Button
+            android:id="@+id/btnShowNative"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show preloaded native" />
+
+        <Button
+            android:id="@+id/btnLoadShowNative"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; show native on demand" />
+
+        <com.alihassan.nextgenads.BannerNativeView
+            android:id="@+id/nativeAdView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:ngad_ad_type="nativead"
+            app:ngad_template="medium" />
+
+        <!-- 4. Interstitial -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="4. Interstitial"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPreloadInterstitial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload interstitial" />
+
+        <Button
+            android:id="@+id/btnShowInterstitial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show preloaded interstitial" />
+
+        <Button
+            android:id="@+id/btnLoadShowInterstitial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Load &amp; show interstitial on demand" />
+
+        <!-- 5. Rewarded -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="5. Rewarded"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPreloadRewarded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload rewarded" />
+
+        <Button
+            android:id="@+id/btnShowRewarded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show rewarded (with dialog)" />
+
+        <!-- 6. Rewarded interstitial -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="6. Rewarded interstitial"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPreloadRewardedInt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload rewarded interstitial" />
+
+        <Button
+            android:id="@+id/btnShowRewardedInt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show rewarded interstitial (with dialog)" />
+    </LinearLayout>
+</ScrollView>

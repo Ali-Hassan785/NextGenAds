@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Which native template to inflate. Keep values in sync with NativeTemplate.fromAttr(). -->
+    <attr name="ngad_template" format="enum">
+        <enum name="small" value="0" />
+        <enum name="medium" value="1" />
+        <enum name="large" value="2" />
+        <enum name="banner" value="3" />
+        <enum name="media_left" value="4" />
+    </attr>
+
+    <declare-styleable name="NativeTemplateView">
+        <attr name="ngad_template" />
+    </declare-styleable>
+
+    <declare-styleable name="BannerNativeView">
+        <!-- Banner vs native. Keep values in sync with AdType.fromAttr(). -->
+        <attr name="ngad_ad_type" format="enum">
+            <enum name="banner" value="0" />
+            <enum name="nativead" value="1" />
+        </attr>
+        <attr name="ngad_template" />
+    </declare-styleable>
+</resources>

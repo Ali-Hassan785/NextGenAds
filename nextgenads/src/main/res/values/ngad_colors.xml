@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Neutral, app-overridable palette for the native templates. Override any of these in the
+         host app's colors.xml to re-theme every template at once. -->
+    <color name="ngad_surface">#FFFFFFFF</color>
+    <color name="ngad_stroke">#FFEDEFF3</color>
+    <color name="ngad_headline">#FF0B0E14</color>
+    <color name="ngad_body">#FF5E6470</color>
+    <color name="ngad_cta">#FF2563EB</color>
+    <color name="ngad_cta_text">#FFFFFFFF</color>
+    <color name="ngad_cta_ripple">#52FFFFFF</color>
+    <color name="ngad_ad_badge">#FFFFC861</color>
+    <color name="ngad_ad_badge_text">#FF5A4500</color>
+    <color name="ngad_shimmer_block">#FFE9ECF1</color>
+    <color name="ngad_media_bg">#FFEFF2F7</color>
+</resources>

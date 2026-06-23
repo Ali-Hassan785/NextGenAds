@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded media surface; used as the MediaView background + outline so the ad media is clipped
+     to rounded corners (with android:clipToOutline="true"). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/ngad_media_bg" />
+    <corners android:radius="14dp" />
+</shape>
