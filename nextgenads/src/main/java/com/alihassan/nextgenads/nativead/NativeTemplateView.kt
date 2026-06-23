@@ -141,6 +141,7 @@ class NativeTemplateView @JvmOverloads constructor(
         adView.registerNativeAd(ad, media)
     }
 
+
     /** Releases the bound ad and stops the shimmer. Call from the host's `onDestroy`. */
     fun destroy() {
         shimmerContainer?.stopShimmer()
