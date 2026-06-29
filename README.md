@@ -25,6 +25,7 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 - [Interstitial ads](#interstitial-ads)
 - [Rewarded ads](#rewarded-ads)
 - [Rewarded interstitial ads](#rewarded-interstitial-ads)
+- [App open ads](#app-open-ads)
 - [Premium / ad-free users](#premium--ad-free-users)
 - [Theming the native templates](#theming-the-native-templates)
 - [Show rate & fill rate tips](#show-rate--fill-rate-tips)
@@ -46,6 +47,7 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 | Interstitial | `Interstitials` | ✅ | ✅ per unit | Frequency cap + backoff retries |
 | Rewarded | `RewardedAds` | ✅ | ✅ per unit | Reward callback |
 | Rewarded interstitial | `RewardedInterstitials` | ✅ | ✅ per unit | Reward callback |
+| App open | `AppOpenAds` / `AppOpenAdManager` | ✅ | ✅ per unit | 4h expiry + auto show on foreground |
 | Consent | `ConsentManager` | — | — | UMP GDPR flow |
 
 - **Global gating** — `NextGenAds.enabled` / `premium` / `premiumProvider` are honoured by every helper.
@@ -317,6 +319,26 @@ val ready = helper.isReady
 
 A fresh ad is requested automatically after each dismissal.
 
+### Show on every Nth call (counter)
+
+For the common "show an interstitial every few transitions" pattern, use `showOnCount` instead of
+tracking a counter yourself. It increments an app-wide counter for that ad unit (helpers are shared)
+and only shows on every Nth call; `onDismiss` still fires on the in-between calls so your flow stays
+uniform:
+
+```kotlin
+// Show an ad on every 3rd level completion (1st and 2nd just continue):
+Interstitials.showOnCount(this, INTERSTITIAL_UNIT, every = 3) {
+    startNextLevel()
+}
+
+// Reset the counter (e.g. on a new session):
+Interstitials.get(INTERSTITIAL_UNIT).resetCounter()
+```
+
+The readiness check and `minIntervalMs` cap still apply, so a counted call skips showing if no ad is
+ready yet.
+
 ---
 
 ## Rewarded ads
@@ -359,6 +381,44 @@ RewardedInterstitials.get(REWARDED_INT_UNIT).show(
     onDismiss = { /* closed */ },
 )
 ```
+
+---
+
+## App open ads
+
+Full-screen ads shown while the user brings the app to the foreground. App-open ads expire 4 hours
+after loading — the helper tracks this and silently refetches a stale ad rather than showing it.
+
+### Auto show on foreground (recommended)
+
+`AppOpenAdManager` wires itself to the process lifecycle and shows an ad each time the app returns
+to the foreground, keeping the next one warm in between. Install it once, after `initialize`:
+
+```kotlin
+// In Application.onCreate(), after NextGenAds.initialize(...):
+AppOpenAdManager.install(this, APP_OPEN_UNIT)
+```
+
+The first foreground after a cold start is skipped by default (the ad usually isn't ready yet and
+showing one over your splash hurts UX) — set `showOnColdStart = true` to opt in. Pause auto-showing
+at any time with `AppOpenAdManager.get()?.enabled = false`; the premium / kill-switch gate in
+`NextGenAds` is always honoured.
+
+### Manual control
+
+```kotlin
+AppOpenAds.preload(APP_OPEN_UNIT)
+
+// Show at your own chosen moment; onDismiss fires immediately if no ad is ready.
+AppOpenAds.get(APP_OPEN_UNIT).show(activity) { proceed() }
+```
+
+| Member | Default | Purpose |
+| --- | --- | --- |
+| `isReady` | — | A non-expired ad is cached and ready. |
+| `isShowing` | — | An app-open ad is currently on screen. |
+| `maxRetries` | `3` | Reload attempts after a failed load (1s/2s/4s backoff). |
+| `minIntervalMs` | `0` | Minimum gap between two app-open ads; `0` disables capping. |
 
 ---
 
@@ -442,6 +502,7 @@ Google's official test ids (safe during development — replace before release):
 | Interstitial | `ca-app-pub-3940256099942544/1033173712` |
 | Rewarded | `ca-app-pub-3940256099942544/5224354917` |
 | Rewarded interstitial | `ca-app-pub-3940256099942544/5354046379` |
+| App open | `ca-app-pub-3940256099942544/9257395921` |
 
 ---
 
@@ -478,7 +539,9 @@ com.alihassan.nextgenads
 ├── nativead.NativeTemplateView        // renders a NativeTemplate
 ├── interstitial.Interstitials         // registry  → InterstitialAdHelper
 ├── rewarded.RewardedAds               // registry  → RewardedAdHelper
-└── rewardedinterstitial.RewardedInterstitials  // registry → RewardedInterstitialAdHelper
+├── rewardedinterstitial.RewardedInterstitials  // registry → RewardedInterstitialAdHelper
+├── appopen.AppOpenAds                  // registry  → AppOpenAdHelper
+└── appopen.AppOpenAdManager            // auto show on foreground (process lifecycle)
 ```
 
 Full KDoc is available on every public class and member in the source.

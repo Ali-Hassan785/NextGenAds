@@ -233,5 +233,33 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Show rewarded interstitial (with dialog)" />
+
+        <!-- 7. App open -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="7. App open"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Auto-shows when you background the app and return (after init). Use the buttons to test manually."
+            android:textColor="#666666"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnPreloadAppOpen"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preload app open" />
+
+        <Button
+            android:id="@+id/btnShowAppOpen"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Show app open" />
     </LinearLayout>
 </ScrollView>

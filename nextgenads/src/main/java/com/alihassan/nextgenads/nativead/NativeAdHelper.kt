@@ -43,23 +43,26 @@ object NativeAdHelper {
             .Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
             .build()
 
-        NativeAdLoader.load(
-            request,
-            object : NativeAdLoaderCallback {
-                override fun onNativeAdLoaded(nativeAd: NativeAd) {
-                    NextGenAds.runOnMain { onLoaded(nativeAd) }
-                }
-
-                override fun onAdFailedToLoad(adError: LoadAdError) {
-                    NextGenAds.runOnMain {
-                        NextGenAds.log("Native failed ($adUnitId): $adError")
-                        onFailed?.invoke(adError)
+        // Queue until the SDK is ready so cache warm-ups issued during app start aren't dropped.
+        NextGenAds.whenInitialized {
+            NativeAdLoader.load(
+                request,
+                object : NativeAdLoaderCallback {
+                    override fun onNativeAdLoaded(nativeAd: NativeAd) {
+                        NextGenAds.runOnMain { onLoaded(nativeAd) }
                     }
-                }
 
-                override fun onAdLoadingCompleted() {}
-            },
-        )
+                    override fun onAdFailedToLoad(adError: LoadAdError) {
+                        NextGenAds.runOnMain {
+                            NextGenAds.log("Native failed ($adUnitId): $adError")
+                            onFailed?.invoke(adError)
+                        }
+                    }
+
+                    override fun onAdLoadingCompleted() {}
+                },
+            )
+        }
     }
 
     /** Preloads up to [count] ads (capped by [maxCachePerUnit]) into the cache. */
@@ -111,7 +114,11 @@ object NativeAdHelper {
                 templateView.setNativeAd(ad)
                 onLoaded?.invoke()
             },
-            onFailed = { error -> onFailed?.invoke(error) },
+            onFailed = { error ->
+                // Stop the shimmer and collapse the slot — otherwise it shimmers forever.
+                templateView.showError()
+                onFailed?.invoke(error)
+            },
         )
     }
 

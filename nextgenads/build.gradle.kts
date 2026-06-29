@@ -40,12 +40,28 @@ publishing {
             }
         }
     }
+
+    repositories {
+        // Private, authenticated Maven repo (GitHub Packages). Credentials are read from
+        // ~/.gradle/gradle.properties (gpr.user / gpr.key) or environment variables — never
+        // hard-coded here, so they are not committed.
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/Ali-Hassan785/NextGenAds")
+            credentials {
+                username = (findProperty("gpr.user") as String?) ?: System.getenv("GITHUB_ACTOR")
+                password = (findProperty("gpr.key") as String?) ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
 
 dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+    // ProcessLifecycleOwner — used by AppOpenAdManager to detect app foregrounding.
+    implementation(libs.androidx.lifecycle.process)
 
     // Google Mobile Ads SDK (Next Generation) — exposed transitively so apps can use ad types.
     api(libs.ads.mobile.sdk)
