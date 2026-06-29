@@ -49,7 +49,12 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
         }
         if (loading) return
         loading = true
+        // Defer the request until the SDK is ready so preloads issued during app start are queued
+        // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
+        NextGenAds.whenInitialized { requestAd(onResult) }
+    }
 
+    private fun requestAd(onResult: ((Boolean) -> Unit)?) {
         RewardedInterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<RewardedInterstitialAd> {

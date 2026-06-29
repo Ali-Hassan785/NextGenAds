@@ -109,7 +109,10 @@ class BannerNativeView @JvmOverloads constructor(
             view,
             adUnitId,
             onLoaded = { onLoaded?.invoke() },
-            onFailed = { onFailed?.invoke() },
+            onFailed = {
+                hide() // collapse the whole placement when no ad could be loaded
+                onFailed?.invoke()
+            },
         )
     }
 
@@ -120,6 +123,7 @@ class BannerNativeView @JvmOverloads constructor(
             hide()
             return
         }
+        nativeView?.destroy() // release any previously bound native ad before switching to a banner
         nativeView = null
         BannerAdHelper.loadAdaptiveBanner(
             activity,
@@ -144,6 +148,7 @@ class BannerNativeView @JvmOverloads constructor(
     }
 
     private fun hide() {
+        nativeView?.destroy() // release the bound native ad so it isn't leaked
         removeAllViews()
         nativeView = null
         visibility = View.GONE

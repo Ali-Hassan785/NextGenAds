@@ -66,11 +66,23 @@ class NativeTemplateView @JvmOverloads constructor(
 
     /** Shows the shimmer placeholder and hides the ad. */
     fun showShimmer() {
+        // Re-show the view itself in case a previous failure collapsed it.
+        visibility = View.VISIBLE
         shimmerContainer?.let {
             it.visibility = View.VISIBLE
             it.startShimmer()
         }
         nativeAdView?.visibility = View.GONE
+    }
+
+    /**
+     * Stops the shimmer and collapses the view. Call when no ad could be loaded so the placeholder
+     * doesn't shimmer forever over an empty slot.
+     */
+    fun showError() {
+        hideShimmer()
+        nativeAdView?.visibility = View.GONE
+        visibility = View.GONE
     }
 
     private fun hideShimmer() {

@@ -14,6 +14,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.alihassan.nextgenads.AdType
 import com.alihassan.nextgenads.BannerNativeView
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.interstitial.Interstitials
@@ -69,6 +70,10 @@ class MainActivity : AppCompatActivity() {
         // 6. Rewarded interstitial.
         findViewById<Button>(R.id.btnPreloadRewardedInt).setOnClickListener { preloadRewardedInterstitial() }
         findViewById<Button>(R.id.btnShowRewardedInt).setOnClickListener { showRewardedInterstitialWithDialog() }
+
+        // 7. App open.
+        findViewById<Button>(R.id.btnPreloadAppOpen).setOnClickListener { preloadAppOpen() }
+        findViewById<Button>(R.id.btnShowAppOpen).setOnClickListener { showAppOpen() }
     }
 
     // --- 1. Consent + init -------------------------------------------------
@@ -265,6 +270,30 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    // --- 7. App open -------------------------------------------------------
+
+    private fun preloadAppOpen() {
+        if (!ensureReady()) return
+        AppOpenAds.preload(SampleApp.APP_OPEN_UNIT)
+        setStatus("Preloading app open…")
+    }
+
+    /**
+     * Shows the app-open ad on demand. Note: it also shows automatically when you background the
+     * app and return — that flow is wired in [SampleApp] via `AppOpenAdManager.install`.
+     */
+    private fun showAppOpen() {
+        if (!ensureReady()) return
+        val helper = AppOpenAds.get(SampleApp.APP_OPEN_UNIT)
+        if (!helper.isReady) {
+            setStatus("No app-open ad ready — preload first")
+            helper.load()
+            return
+        }
+        setStatus("Showing app open…")
+        helper.show(this) { setStatus("App open dismissed ✓") }
     }
 
     // --- helpers -----------------------------------------------------------

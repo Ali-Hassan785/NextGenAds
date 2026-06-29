@@ -54,6 +54,12 @@ object NextGenAds {
     private var initialized = false
     private val initializing = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Work queued before initialization finished: `initialize`'s `onComplete` callbacks plus any
+     * load/preload requests routed through [whenInitialized]. Drained once, in order, on the main
+     * thread when the SDK reports ready. Guarded by `synchronized(this)`.
+     */
     private val pendingCallbacks = mutableListOf<Runnable>()
 
     /**
@@ -107,6 +113,33 @@ object NextGenAds {
 
     @JvmStatic
     fun isInitialized(): Boolean = initialized
+
+    /**
+     * Runs [action] on the main thread once the SDK is initialized.
+     *
+     * If initialization has already completed the action is posted to run on the next main-loop
+     * tick; otherwise it is queued and replayed — in submission order — when initialization
+     * finishes. This lets helpers accept preload/load requests issued during app start (before
+     * [initialize] has completed) without dropping them or hammering the uninitialized SDK, where
+     * requests would fail and waste retry budget.
+     *
+     * Note: if [initialize] is never called, queued actions never run.
+     */
+    @JvmStatic
+    fun whenInitialized(action: Runnable) {
+        if (!initialized) {
+            synchronized(this) {
+                // Re-check under the lock: initialize() may have flushed the queue between the
+                // volatile read above and acquiring the monitor. Without this, a late enqueue
+                // could sit in the queue forever.
+                if (!initialized) {
+                    pendingCallbacks.add(action)
+                    return
+                }
+            }
+        }
+        mainHandler.post { action.run() }
+    }
 
     /**
      * Runs [action] on the main thread. The Next-Gen SDK delivers ad callbacks on a background

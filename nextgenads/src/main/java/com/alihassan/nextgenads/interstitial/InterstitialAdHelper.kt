@@ -28,6 +28,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
     private var loading = false
     private var retryCount = 0
     private var lastShownElapsed = 0L
+    private var triggerCount = 0
 
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
@@ -51,7 +52,12 @@ class InterstitialAdHelper(private val adUnitId: String) {
         }
         if (loading) return
         loading = true
+        // Defer the request until the SDK is ready so preloads issued during app start are queued
+        // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
+        NextGenAds.whenInitialized { requestAd(onResult) }
+    }
 
+    private fun requestAd(onResult: ((Boolean) -> Unit)?) {
         InterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<InterstitialAd> {
@@ -132,6 +138,34 @@ class InterstitialAdHelper(private val adUnitId: String) {
         ad.show(activity)
         return true
     }
+
+    /**
+     * Counter-gated show: increments an internal call counter and only shows the interstitial on
+     * every [every]-th call — e.g. `showOnCount(activity, every = 3) { … }` shows an ad on every
+     * third level/screen transition. The readiness check and frequency cap of [show] still apply,
+     * so a call can be counted but skip showing if no ad is ready.
+     *
+     * Because helpers are shared per ad unit (via [Interstitials]), the counter is app-wide for
+     * that unit. [onDismiss] is always invoked (immediately when this call doesn't show an ad), so
+     * callers can proceed uniformly.
+     *
+     * @param every show on every Nth call; values `<= 1` show on every call.
+     * @return `true` if an ad is being shown.
+     */
+    @JvmOverloads
+    fun showOnCount(activity: Activity, every: Int = 1, onDismiss: () -> Unit = {}): Boolean {
+        triggerCount++
+        if (every > 1 && triggerCount % every != 0) {
+            onDismiss()
+            return false
+        }
+        return show(activity, onDismiss)
+    }
+
+    /** Resets the [showOnCount] counter back to zero. */
+    fun resetCounter() {
+        triggerCount = 0
+    }
 }
 
 /** Registry that keeps one [InterstitialAdHelper] per ad unit alive for reuse across screens. */
@@ -146,4 +180,17 @@ object Interstitials {
     /** Convenience: preload an ad unit. */
     @JvmStatic
     fun preload(adUnitId: String) = get(adUnitId).load()
+
+    /**
+     * Convenience: counter-gated show for an ad unit — shows the interstitial on every [every]-th
+     * call. See [InterstitialAdHelper.showOnCount].
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun showOnCount(
+        activity: Activity,
+        adUnitId: String,
+        every: Int = 1,
+        onDismiss: () -> Unit = {},
+    ): Boolean = get(adUnitId).showOnCount(activity, every, onDismiss)
 }

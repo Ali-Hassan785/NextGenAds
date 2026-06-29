@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `AppOpenAds` / `AppOpenAdHelper` — app-open ads with preloading, exponential-backoff retries,
+  frequency capping, and 4-hour expiry handling (stale ads are refetched, never shown).
+- `AppOpenAdManager` — opt-in manager that auto-shows an app-open ad when the app returns to the
+  foreground, driven by `ProcessLifecycleOwner`.
+- `Interstitials.showOnCount` / `InterstitialAdHelper.showOnCount` + `resetCounter` — counter-gated
+  interstitials that show on every Nth call.
+
+### Fixed
+- Native ads no longer shimmer forever when a load fails — the slot now collapses (`showError`).
+- `BannerNativeView` now destroys its bound native ad in `hide()` and when switching to a banner,
+  preventing a `NativeAd` leak.
+- `AppOpenAdManager` holds the current `Activity` via a `WeakReference` (fixes a `StaticFieldLeak`).
+- Banner `preload` builds its `AdView` only after the SDK is initialized.
+
+### Changed
+- Load/preload requests issued before `NextGenAds.initialize()` completes are now queued (via the
+  new `NextGenAds.whenInitialized`) and replayed once the SDK is ready, instead of failing against
+  an uninitialized SDK and wasting the retry budget. Affects every ad format.
+
+### Dependencies
+- Added `androidx.lifecycle:lifecycle-process:2.6.2` (for `AppOpenAdManager`).
+
 ## [1.0.0]
 
 Initial release.
