@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Ad events** — `AdEventListener` + `AdFormat` with `NextGenAds.registerEventListener` /
+  `unregisterEventListener`. A single app-wide hook for every ad lifecycle event across all formats:
+  load, failed-to-load, show, dismiss, failed-to-show, impression, click, **paid-revenue**
+  (`onAdPaid` / `AdValue`, for ROAS / analytics), and reward. Callbacks are delivered on the main
+  thread and isolated so one listener's exception can't suppress the others. Banner and native ads
+  now attach an event callback so their impression/click/paid events are surfaced too.
 - `AppOpenAds` / `AppOpenAdHelper` — app-open ads with preloading, exponential-backoff retries,
   frequency capping, and 4-hour expiry handling (stale ads are refetched, never shown).
 - `AppOpenAdManager` — opt-in manager that auto-shows an app-open ad when the app returns to the

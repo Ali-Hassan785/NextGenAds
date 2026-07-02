@@ -27,6 +27,7 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 - [Rewarded interstitial ads](#rewarded-interstitial-ads)
 - [App open ads](#app-open-ads)
 - [Premium / ad-free users](#premium--ad-free-users)
+- [Ad events (analytics & revenue)](#ad-events-analytics--revenue)
 - [Theming the native templates](#theming-the-native-templates)
 - [Show rate & fill rate tips](#show-rate--fill-rate-tips)
 - [Test ad unit IDs](#test-ad-unit-ids)
@@ -53,6 +54,7 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 - **Global gating** — `NextGenAds.enabled` / `premium` / `premiumProvider` are honoured by every helper.
 - **Shimmer placeholders** while ads load.
 - **Main-thread safety** — every ad callback is delivered on the main thread.
+- **Ad events** — one `AdEventListener` for all formats: load, impression, click, **paid-revenue** & reward (analytics / ROAS). See [Ad events](#ad-events-analytics--revenue).
 
 ---
 
@@ -441,6 +443,59 @@ While suppressed, no ad is requested or shown, and `BannerNativeView` hides itse
 
 ---
 
+## Ad events (analytics & revenue)
+
+Register a single `AdEventListener` once and receive **every** ad lifecycle event from **every**
+format — load, show, dismiss, impression, click, paid-revenue and reward — without threading
+callbacks through each call site. This is the recommended hook for analytics and ROAS / ad-revenue
+measurement. The per-call callbacks (`onResult`, `onDismiss`, `onReward`, …) still fire as before;
+events are additive.
+
+All callbacks are delivered on the **main thread**, and one listener throwing never stops the others
+from being notified.
+
+```kotlin
+NextGenAds.registerEventListener(object : AdEventListener {
+    override fun onAdImpression(format: AdFormat, adUnitId: String) {
+        analytics.logImpression(format.name, adUnitId)
+    }
+
+    override fun onAdClicked(format: AdFormat, adUnitId: String) {
+        analytics.logClick(format.name, adUnitId)
+    }
+
+    // Estimated revenue — forward to Firebase `ad_impression` for ROAS measurement.
+    override fun onAdPaid(format: AdFormat, adUnitId: String, value: AdValue) {
+        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.AD_IMPRESSION, Bundle().apply {
+            putString(FirebaseAnalytics.Param.AD_PLATFORM, "NextGenAds")
+            putString(FirebaseAnalytics.Param.AD_FORMAT, format.name)
+            putString(FirebaseAnalytics.Param.AD_UNIT_NAME, adUnitId)
+            putDouble(FirebaseAnalytics.Param.VALUE, value.valueMicros / 1_000_000.0)
+            putString(FirebaseAnalytics.Param.CURRENCY, value.currencyCode)
+        })
+    }
+
+    override fun onUserEarnedReward(format: AdFormat, adUnitId: String, reward: RewardItem) {
+        // …grant the reward / track completion
+    }
+})
+```
+
+Every method has a no-op default, so implement only the ones you need. Call
+`NextGenAds.unregisterEventListener(listener)` to stop receiving events.
+
+| Event | Banner | Native | Interstitial | Rewarded | Rewarded-int. | App-open |
+|-------|:------:|:------:|:------------:|:--------:|:-------------:|:--------:|
+| `onAdLoaded` / `onAdFailedToLoad` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `onAdImpression` / `onAdClicked` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `onAdPaid` (revenue) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `onAdShown` / `onAdDismissed` / `onAdFailedToShow` | — | — | ✓ | ✓ | ✓ | ✓ |
+| `onUserEarnedReward` | — | — | — | ✓ | ✓ | — |
+
+> Banners and native ads are inline, so they raise `onAdImpression` rather than `onAdShown`.
+
+---
+
 ## Theming the native templates
 
 Override any of these colors in your app's `colors.xml` to re-theme **every** template at once
@@ -529,9 +584,12 @@ needed in your app. The Next-Gen Ads SDK and UMP bring their own keep rules too.
 
 ```
 com.alihassan.nextgenads
-├── NextGenAds                         // initialize, enabled, premium, canShowAds, isInitialized
+├── NextGenAds                         // initialize, enabled, premium, canShowAds, isInitialized,
+│                                      //   registerEventListener / unregisterEventListener
 ├── BannerNativeView                   // drop-in banner/native View
 ├── AdType                             // BANNER, NATIVE
+├── events.AdEventListener             // app-wide ad events (load/impression/click/paid/reward)
+├── events.AdFormat                    // BANNER, NATIVE, INTERSTITIAL, REWARDED, REWARDED_INTERSTITIAL, APP_OPEN
 ├── consent.ConsentManager             // UMP consent
 ├── banner.BannerAdHelper              // adaptive banners
 ├── nativead.NativeAdHelper            // native loading + cache

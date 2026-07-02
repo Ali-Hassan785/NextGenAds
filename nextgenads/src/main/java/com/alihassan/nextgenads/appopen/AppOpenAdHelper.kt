@@ -10,10 +10,12 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAd
 import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import java.lang.ref.WeakReference
@@ -80,6 +82,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
     }
 
     private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+        NextGenAds.countRequest(AdFormat.APP_OPEN, adUnitId)
         AppOpenAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<AppOpenAd> {
@@ -90,6 +93,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                         loading = false
                         retryCount = 0
                         NextGenAds.log("AppOpen loaded: $adUnitId")
+                        NextGenAds.dispatchLoaded(AdFormat.APP_OPEN, adUnitId)
                         onResult?.invoke(true)
                     }
                 }
@@ -99,6 +103,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                         appOpenAd = null
                         loading = false
                         NextGenAds.log("AppOpen failed ($adUnitId): $adError")
+                        NextGenAds.dispatchFailedToLoad(AdFormat.APP_OPEN, adUnitId, adError)
                         if (retryCount < maxRetries) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
@@ -109,6 +114,50 @@ class AppOpenAdHelper(private val adUnitId: String) {
                 }
             },
         )
+    }
+
+    /**
+     * On-demand "request and show": show the cached ad immediately if one is ready, otherwise
+     * request one and show it the moment it loads. Ideal for a splash gate.
+     *
+     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onDismiss] fires so the caller
+     * can proceed into the app, and the in-flight load is left to finish for the next opportunity
+     * (a late ad is never shown over app content). `0` waits indefinitely for the load result.
+     *
+     * [onDismiss] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
+     * or synchronously when ads are disabled / one is already showing.
+     */
+    @JvmOverloads
+    fun loadAndShow(
+        activity: Activity,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ) {
+        if (!NextGenAds.canShowAds() || showing) {
+            onDismiss()
+            return
+        }
+        if (isReady) {
+            show(activity, onDismiss)
+            return
+        }
+
+        // Guard so the timeout and the load result can't both proceed.
+        var settled = false
+        val timeoutRunnable = Runnable {
+            if (settled) return@Runnable
+            settled = true
+            NextGenAds.log("AppOpen load timed out ($adUnitId); proceeding")
+            onDismiss()
+        }
+        if (timeoutMs > 0) handler.postDelayed(timeoutRunnable, timeoutMs)
+
+        load { loaded ->
+            if (settled) return@load // timeout already let the caller proceed
+            settled = true
+            handler.removeCallbacks(timeoutRunnable)
+            if (loaded && isReady) show(activity, onDismiss) else onDismiss()
+        }
     }
 
     /**
@@ -139,6 +188,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
         ad.adEventCallback = object : AppOpenAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 NextGenAds.log("AppOpen shown: $adUnitId")
+                NextGenAds.dispatchShown(AdFormat.APP_OPEN, adUnitId)
             }
 
             override fun onAdDismissedFullScreenContent() {
@@ -147,6 +197,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     showing = false
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     load()
+                    NextGenAds.dispatchDismissed(AdFormat.APP_OPEN, adUnitId)
                     onDismiss()
                 }
             }
@@ -156,15 +207,25 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     appOpenAd = null
                     showing = false
                     NextGenAds.log("AppOpen show failed ($adUnitId): $fullScreenContentError")
+                    NextGenAds.dispatchFailedToShow(AdFormat.APP_OPEN, adUnitId, fullScreenContentError)
                     load()
                     onDismiss()
                 }
             }
 
-            override fun onAdImpression() {}
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.APP_OPEN, adUnitId)
+            }
 
-            override fun onAdClicked() {}
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.APP_OPEN, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.APP_OPEN, adUnitId, value, ad.getResponseInfo())
+            }
         }
+        NextGenAds.log("AppOpen show requested: $adUnitId")
         ad.show(activity)
         return true
     }
@@ -187,6 +248,16 @@ object AppOpenAds {
     /** Convenience: preload an ad unit. */
     @JvmStatic
     fun preload(adUnitId: String) = get(adUnitId).load()
+
+    /** Convenience: request (if needed) and show [adUnitId] on demand, e.g. from a splash gate. */
+    @JvmStatic
+    @JvmOverloads
+    fun loadAndShow(
+        adUnitId: String,
+        activity: Activity,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
 }
 
 /**

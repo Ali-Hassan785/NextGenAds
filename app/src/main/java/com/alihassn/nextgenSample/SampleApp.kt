@@ -1,6 +1,7 @@
 package com.alihassn.nextgenSample
 
 import android.app.Application
+import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAdManager
 
 /**
@@ -16,6 +17,9 @@ class SampleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Route every ad lifecycle event (load / show / click / impression / revenue / …) to
+        // Firebase Analytics. No-ops until google-services.json is added.
+        NextGenAds.registerEventListener(FirebaseAdEventListener(this))
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
     }
 

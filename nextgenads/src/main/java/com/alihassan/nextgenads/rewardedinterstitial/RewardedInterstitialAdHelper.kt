@@ -4,8 +4,10 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.rewarded.OnUserEarnedRewardListener
@@ -55,6 +57,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
     }
 
     private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+        NextGenAds.countRequest(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
         RewardedInterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<RewardedInterstitialAd> {
@@ -64,6 +67,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
                         loading = false
                         retryCount = 0
                         NextGenAds.log("RewardedInterstitial loaded: $adUnitId")
+                        NextGenAds.dispatchLoaded(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
                         onResult?.invoke(true)
                     }
                 }
@@ -73,6 +77,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
                         rewardedInterstitialAd = null
                         loading = false
                         NextGenAds.log("RewardedInterstitial failed ($adUnitId): $adError")
+                        NextGenAds.dispatchFailedToLoad(AdFormat.REWARDED_INTERSTITIAL, adUnitId, adError)
                         if (retryCount < maxRetries) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
@@ -113,12 +118,14 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
         ad.adEventCallback = object : RewardedInterstitialAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 NextGenAds.log("RewardedInterstitial shown: $adUnitId")
+                NextGenAds.dispatchShown(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
             }
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
                     rewardedInterstitialAd = null
                     load()
+                    NextGenAds.dispatchDismissed(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
                     onDismiss()
                 }
             }
@@ -127,21 +134,34 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
                 NextGenAds.runOnMain {
                     rewardedInterstitialAd = null
                     NextGenAds.log("RewardedInterstitial show failed ($adUnitId): $fullScreenContentError")
+                    NextGenAds.dispatchFailedToShow(AdFormat.REWARDED_INTERSTITIAL, adUnitId, fullScreenContentError)
                     load()
                     onDismiss()
                 }
             }
 
-            override fun onAdImpression() {}
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
+            }
 
-            override fun onAdClicked() {}
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.REWARDED_INTERSTITIAL, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.REWARDED_INTERSTITIAL, adUnitId, value, ad.getResponseInfo())
+            }
         }
 
+        NextGenAds.log("RewardedInterstitial show requested: $adUnitId")
         ad.show(
             activity,
             object : OnUserEarnedRewardListener {
                 override fun onUserEarnedReward(rewardItem: RewardItem) {
-                    NextGenAds.runOnMain { onReward(rewardItem) }
+                    NextGenAds.runOnMain {
+                        NextGenAds.dispatchReward(AdFormat.REWARDED_INTERSTITIAL, adUnitId, rewardItem)
+                        onReward(rewardItem)
+                    }
                 }
             },
         )

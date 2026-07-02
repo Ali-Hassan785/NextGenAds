@@ -129,7 +129,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun preloadNative() {
         if (!ensureReady()) return
-        NativeAdHelper.preload(NATIVE_UNIT, count = 2)
+        NativeAdHelper.preload(NATIVE_UNIT, count = 1)
         setStatus("Preloading native…")
     }
 

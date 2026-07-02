@@ -6,12 +6,15 @@ import android.view.View
 import android.view.ViewGroup
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.R
+import com.alihassan.nextgenads.events.AdFormat
 import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import java.util.ArrayDeque
 
@@ -34,10 +37,20 @@ object BannerAdHelper {
     /**
      * Preloads up to [count] banners (capped by [maxCachePerUnit]) into a detached cache so that a
      * later [loadAdaptiveBanner] call can attach one instantly. Call after [NextGenAds.initialize].
+     *
+     * @param widthDp the width (in dp) the banner will be shown at. Defaults to the full screen
+     *   width; **pass the container's content width if your banner placement has horizontal padding
+     *   or margins**, otherwise the preloaded ad is sized wider than the slot and the SDK logs
+     *   "Not enough space to show the full ad". Use [containerWidthDp] to compute it from the view.
      */
     @JvmStatic
     @JvmOverloads
-    fun preload(activity: Activity, adUnitId: String, count: Int = 1) {
+    fun preload(
+        activity: Activity,
+        adUnitId: String,
+        count: Int = 1,
+        widthDp: Int = screenWidthDp(activity),
+    ) {
         if (!NextGenAds.canShowAds()) return
         val target = count.coerceIn(0, maxCachePerUnit)
         while (cachedCount(adUnitId) + inFlightCount(adUnitId) < target) {
@@ -47,15 +60,18 @@ object BannerAdHelper {
             NextGenAds.whenInitialized {
                 val adView = AdView(activity)
                 val adSize =
-                    AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, screenWidthDp(activity))
+                    AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp)
+                NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
                 adView.loadAd(
                     BannerAdRequest.Builder(adUnitId, adSize).build(),
                     object : AdLoadCallback<BannerAd> {
                         override fun onAdLoaded(ad: BannerAd) {
                             NextGenAds.runOnMain {
                                 decFlight(adUnitId)
+                                attachEvents(ad, adUnitId)
                                 offer(adUnitId, adView)
                                 NextGenAds.log("Banner preloaded: $adUnitId")
+                                NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
                             }
                         }
 
@@ -63,6 +79,7 @@ object BannerAdHelper {
                             NextGenAds.runOnMain {
                                 decFlight(adUnitId)
                                 NextGenAds.log("Banner preload failed ($adUnitId): $adError")
+                                NextGenAds.dispatchFailedToLoad(AdFormat.BANNER, adUnitId, adError)
                             }
                         }
                     },
@@ -76,7 +93,9 @@ object BannerAdHelper {
      * otherwise a fresh one is loaded behind a shimmer placeholder.
      *
      * @param container the [ViewGroup] that hosts the banner. Its current children are replaced.
-     * @param refill when `true`, re-warms the cache after consuming a preloaded banner.
+     * @param refill when `true`, re-warms the cache with a fresh request after consuming a preloaded
+     *   banner. Defaults to `false` so that showing a preloaded banner issues **no** new request —
+     *   call [preload] yourself when you want the next banner warmed.
      */
     @JvmStatic
     @JvmOverloads
@@ -84,7 +103,7 @@ object BannerAdHelper {
         activity: Activity,
         container: ViewGroup,
         adUnitId: String,
-        refill: Boolean = true,
+        refill: Boolean = false,
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
     ) {
@@ -122,6 +141,7 @@ object BannerAdHelper {
         )
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.
         NextGenAds.whenInitialized {
+            NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
             adView.loadAd(
                 BannerAdRequest.Builder(adUnitId, adSize).build(),
                 object : AdLoadCallback<BannerAd> {
@@ -130,7 +150,9 @@ object BannerAdHelper {
                             shimmer.stopShimmer()
                             container.removeView(shimmer)
                             adView.visibility = View.VISIBLE
+                            attachEvents(ad, adUnitId)
                             NextGenAds.log("Banner loaded: $adUnitId")
+                            NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
                             onLoaded?.invoke()
                         }
                     }
@@ -141,6 +163,7 @@ object BannerAdHelper {
                             container.removeAllViews()
                             container.visibility = View.GONE
                             NextGenAds.log("Banner failed ($adUnitId): $adError")
+                            NextGenAds.dispatchFailedToLoad(AdFormat.BANNER, adUnitId, adError)
                             onFailed?.invoke(adError)
                         }
                     }
@@ -148,6 +171,35 @@ object BannerAdHelper {
             )
         }
     }
+
+    /**
+     * Attaches the ad-events bridge to a loaded banner so impression / click / paid-revenue events
+     * reach the global [AdEventListener]s. Banners are inline, so they have no show/dismiss events.
+     */
+    private fun attachEvents(ad: BannerAd, adUnitId: String) {
+        ad.adEventCallback = object : BannerAdEventCallback {
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.BANNER, adUnitId)
+            }
+
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.BANNER, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.BANNER, adUnitId, value, ad.getResponseInfo())
+            }
+        }
+    }
+
+    /**
+     * The content width (in dp) available inside [container] — the value to pass as `widthDp` to
+     * [preload] so a preloaded banner matches a padded/margined placement. Falls back to the full
+     * screen width when the container hasn't been laid out yet.
+     */
+    @JvmStatic
+    fun containerWidthDp(activity: Activity, container: ViewGroup): Int =
+        bannerWidthDp(activity, container)
 
     private fun bannerWidthDp(activity: Activity, container: ViewGroup): Int {
         val metrics = activity.resources.displayMetrics

@@ -2,6 +2,13 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// Firebase's google-services plugin requires a google-services.json. Apply it only when that file
+// is present so the sample still builds without Firebase configured — drop your json into app/ to
+// activate Analytics reporting.
+if (project.file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.alihassn.nextgenSample"
     compileSdk {
@@ -33,6 +40,8 @@ android {
 
 dependencies {
     implementation(project(":nextgenads"))
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)

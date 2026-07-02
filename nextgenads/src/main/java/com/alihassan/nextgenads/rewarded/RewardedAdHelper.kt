@@ -4,8 +4,10 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.rewarded.OnUserEarnedRewardListener
@@ -55,6 +57,7 @@ class RewardedAdHelper(private val adUnitId: String) {
     }
 
     private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+        NextGenAds.countRequest(AdFormat.REWARDED, adUnitId)
         RewardedAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<RewardedAd> {
@@ -64,6 +67,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                         loading = false
                         retryCount = 0
                         NextGenAds.log("Rewarded loaded: $adUnitId")
+                        NextGenAds.dispatchLoaded(AdFormat.REWARDED, adUnitId)
                         onResult?.invoke(true)
                     }
                 }
@@ -73,6 +77,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                         rewardedAd = null
                         loading = false
                         NextGenAds.log("Rewarded failed ($adUnitId): $adError")
+                        NextGenAds.dispatchFailedToLoad(AdFormat.REWARDED, adUnitId, adError)
                         if (retryCount < maxRetries) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
@@ -113,12 +118,14 @@ class RewardedAdHelper(private val adUnitId: String) {
         ad.adEventCallback = object : RewardedAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 NextGenAds.log("Rewarded shown: $adUnitId")
+                NextGenAds.dispatchShown(AdFormat.REWARDED, adUnitId)
             }
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
                     rewardedAd = null
                     load()
+                    NextGenAds.dispatchDismissed(AdFormat.REWARDED, adUnitId)
                     onDismiss()
                 }
             }
@@ -127,21 +134,34 @@ class RewardedAdHelper(private val adUnitId: String) {
                 NextGenAds.runOnMain {
                     rewardedAd = null
                     NextGenAds.log("Rewarded show failed ($adUnitId): $fullScreenContentError")
+                    NextGenAds.dispatchFailedToShow(AdFormat.REWARDED, adUnitId, fullScreenContentError)
                     load()
                     onDismiss()
                 }
             }
 
-            override fun onAdImpression() {}
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.REWARDED, adUnitId)
+            }
 
-            override fun onAdClicked() {}
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.REWARDED, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.REWARDED, adUnitId, value, ad.getResponseInfo())
+            }
         }
 
+        NextGenAds.log("Rewarded show requested: $adUnitId")
         ad.show(
             activity,
             object : OnUserEarnedRewardListener {
                 override fun onUserEarnedReward(rewardItem: RewardItem) {
-                    NextGenAds.runOnMain { onReward(rewardItem) }
+                    NextGenAds.runOnMain {
+                        NextGenAds.dispatchReward(AdFormat.REWARDED, adUnitId, rewardItem)
+                        onReward(rewardItem)
+                    }
                 }
             },
         )

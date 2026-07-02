@@ -1,8 +1,11 @@
 package com.alihassan.nextgenads.nativead
 
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
@@ -45,16 +48,23 @@ object NativeAdHelper {
 
         // Queue until the SDK is ready so cache warm-ups issued during app start aren't dropped.
         NextGenAds.whenInitialized {
+            NextGenAds.countRequest(AdFormat.NATIVE, adUnitId)
             NativeAdLoader.load(
                 request,
                 object : NativeAdLoaderCallback {
                     override fun onNativeAdLoaded(nativeAd: NativeAd) {
-                        NextGenAds.runOnMain { onLoaded(nativeAd) }
+                        NextGenAds.runOnMain {
+                            attachEvents(nativeAd, adUnitId)
+                            NextGenAds.log("Native loaded: $adUnitId")
+                            NextGenAds.dispatchLoaded(AdFormat.NATIVE, adUnitId)
+                            onLoaded(nativeAd)
+                        }
                     }
 
                     override fun onAdFailedToLoad(adError: LoadAdError) {
                         NextGenAds.runOnMain {
                             NextGenAds.log("Native failed ($adUnitId): $adError")
+                            NextGenAds.dispatchFailedToLoad(AdFormat.NATIVE, adUnitId, adError)
                             onFailed?.invoke(adError)
                         }
                     }
@@ -129,6 +139,27 @@ object NativeAdHelper {
         val keys = if (adUnitId != null) listOf(adUnitId) else pool.keys.toList()
         keys.forEach { key ->
             pool.remove(key)?.forEach { it.destroy() }
+        }
+    }
+
+    /**
+     * Attaches the ad-events bridge to a loaded native ad so impression / click / paid-revenue
+     * events reach the global [AdEventListener]s. Attached at load time so cached ads keep emitting
+     * once bound into a template.
+     */
+    private fun attachEvents(ad: NativeAd, adUnitId: String) {
+        ad.adEventCallback = object : NativeAdEventCallback {
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.NATIVE, adUnitId)
+            }
+
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.NATIVE, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.NATIVE, adUnitId, value, ad.getResponseInfo())
+            }
         }
     }
 

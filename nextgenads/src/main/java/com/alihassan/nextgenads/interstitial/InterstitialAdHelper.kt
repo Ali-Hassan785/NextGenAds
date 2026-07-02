@@ -5,8 +5,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
@@ -33,6 +35,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
 
+    /**
+     * When `true`, the helper automatically requests the next ad after one is shown/dismissed (and
+     * when [show] finds none ready). Default `false` so a preloaded ad results in a **single**
+     * request — warm the next one explicitly via [load] / [Interstitials.preload], like the native
+     * preloader. This prevents the "requested twice per show" behaviour.
+     */
+    var autoReload = false
+
     /** Minimum gap (ms) between two interstitials. `0` disables frequency capping. */
     var minIntervalMs = 0L
 
@@ -58,6 +68,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
     }
 
     private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+        NextGenAds.countRequest(AdFormat.INTERSTITIAL, adUnitId)
         InterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
             object : AdLoadCallback<InterstitialAd> {
@@ -67,6 +78,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                         loading = false
                         retryCount = 0
                         NextGenAds.log("Interstitial loaded: $adUnitId")
+                        NextGenAds.dispatchLoaded(AdFormat.INTERSTITIAL, adUnitId)
                         onResult?.invoke(true)
                     }
                 }
@@ -76,6 +88,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                         interstitialAd = null
                         loading = false
                         NextGenAds.log("Interstitial failed ($adUnitId): $adError")
+                        NextGenAds.dispatchFailedToLoad(AdFormat.INTERSTITIAL, adUnitId, adError)
                         if (retryCount < maxRetries) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
@@ -104,20 +117,22 @@ class InterstitialAdHelper(private val adUnitId: String) {
         val capped = minIntervalMs > 0 && lastShownElapsed > 0 && now - lastShownElapsed < minIntervalMs
         if (ad == null || capped) {
             onDismiss()
-            load() // make sure the next attempt has an ad ready
+            if (autoReload) load() // opt-in: make the next attempt have an ad ready
             return false
         }
 
         ad.adEventCallback = object : InterstitialAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 NextGenAds.log("Interstitial shown: $adUnitId")
+                NextGenAds.dispatchShown(AdFormat.INTERSTITIAL, adUnitId)
             }
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
                     interstitialAd = null
                     lastShownElapsed = SystemClock.elapsedRealtime()
-                    load()
+                    if (autoReload) load()
+                    NextGenAds.dispatchDismissed(AdFormat.INTERSTITIAL, adUnitId)
                     onDismiss()
                 }
             }
@@ -126,15 +141,25 @@ class InterstitialAdHelper(private val adUnitId: String) {
                 NextGenAds.runOnMain {
                     interstitialAd = null
                     NextGenAds.log("Interstitial show failed ($adUnitId): $fullScreenContentError")
-                    load()
+                    NextGenAds.dispatchFailedToShow(AdFormat.INTERSTITIAL, adUnitId, fullScreenContentError)
+                    if (autoReload) load()
                     onDismiss()
                 }
             }
 
-            override fun onAdImpression() {}
+            override fun onAdImpression() {
+                NextGenAds.dispatchImpression(AdFormat.INTERSTITIAL, adUnitId)
+            }
 
-            override fun onAdClicked() {}
+            override fun onAdClicked() {
+                NextGenAds.dispatchClicked(AdFormat.INTERSTITIAL, adUnitId)
+            }
+
+            override fun onAdPaid(value: AdValue) {
+                NextGenAds.dispatchPaid(AdFormat.INTERSTITIAL, adUnitId, value, ad.getResponseInfo())
+            }
         }
+        NextGenAds.log("Interstitial show requested: $adUnitId")
         ad.show(activity)
         return true
     }

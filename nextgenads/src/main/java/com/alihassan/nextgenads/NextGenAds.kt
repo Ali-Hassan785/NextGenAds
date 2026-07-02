@@ -4,9 +4,17 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.alihassan.nextgenads.events.AdEventListener
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.common.AdValue
+import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
+import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.common.RequestConfiguration
+import com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
+import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -141,6 +149,80 @@ object NextGenAds {
         mainHandler.post { action.run() }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Ad events
+    //
+    // A single, app-wide stream of every ad lifecycle event (load / show / dismiss / impression /
+    // click / paid-revenue / reward) across all formats. Helpers call the `dispatch*` functions;
+    // each is marshalled to the main thread and delivered to every registered listener, with one
+    // listener's exception isolated so it can't suppress the rest.
+    // ---------------------------------------------------------------------------------------------
+
+    private val eventListeners = CopyOnWriteArrayList<AdEventListener>()
+
+    /**
+     * Registers an [AdEventListener] to receive every ad event from every format. Typically called
+     * once from `Application.onCreate`. Re-registering the same instance is a no-op.
+     */
+    @JvmStatic
+    fun registerEventListener(listener: AdEventListener) {
+        if (!eventListeners.contains(listener)) eventListeners.add(listener)
+    }
+
+    /** Removes a previously [registerEventListener]ed listener. */
+    @JvmStatic
+    fun unregisterEventListener(listener: AdEventListener) {
+        eventListeners.remove(listener)
+    }
+
+    /** Delivers [block] to every registered listener on the main thread, isolating failures. */
+    private fun dispatch(block: (AdEventListener) -> Unit) {
+        if (eventListeners.isEmpty()) return
+        runOnMain {
+            for (listener in eventListeners) {
+                try {
+                    block(listener)
+                } catch (t: Throwable) {
+                    log("AdEventListener threw", t)
+                }
+            }
+        }
+    }
+
+    internal fun dispatchLoaded(format: AdFormat, adUnitId: String) =
+        dispatch { it.onAdLoaded(format, adUnitId) }
+
+    internal fun dispatchFailedToLoad(format: AdFormat, adUnitId: String, error: LoadAdError) =
+        dispatch { it.onAdFailedToLoad(format, adUnitId, error) }
+
+    internal fun dispatchShown(format: AdFormat, adUnitId: String) =
+        dispatch { it.onAdShown(format, adUnitId) }
+
+    internal fun dispatchFailedToShow(
+        format: AdFormat,
+        adUnitId: String,
+        error: FullScreenContentError,
+    ) = dispatch { it.onAdFailedToShow(format, adUnitId, error) }
+
+    internal fun dispatchDismissed(format: AdFormat, adUnitId: String) =
+        dispatch { it.onAdDismissed(format, adUnitId) }
+
+    internal fun dispatchImpression(format: AdFormat, adUnitId: String) =
+        dispatch { it.onAdImpression(format, adUnitId) }
+
+    internal fun dispatchClicked(format: AdFormat, adUnitId: String) =
+        dispatch { it.onAdClicked(format, adUnitId) }
+
+    internal fun dispatchPaid(
+        format: AdFormat,
+        adUnitId: String,
+        value: AdValue,
+        responseInfo: ResponseInfo? = null,
+    ) = dispatch { it.onAdPaid(format, adUnitId, value, responseInfo) }
+
+    internal fun dispatchReward(format: AdFormat, adUnitId: String, reward: RewardItem) =
+        dispatch { it.onUserEarnedReward(format, adUnitId, reward) }
+
     /**
      * Runs [action] on the main thread. The Next-Gen SDK delivers ad callbacks on a background
      * thread, so any callback that touches UI (shimmer, views) must be marshalled through here.
@@ -148,6 +230,31 @@ object NextGenAds {
     internal fun runOnMain(action: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) action() else mainHandler.post(action)
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Request counting (testing / diagnostics)
+    //
+    // Cumulative count of ad *requests* issued per ad unit for this process. Helpers call
+    // [countRequest] at the moment they fire a request to the SDK; the running total is logged so a
+    // tester can see how many times a unit has been requested (and spot duplicate / runaway loads).
+    // ---------------------------------------------------------------------------------------------
+
+    private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /** Increments and returns the cumulative request count for [adUnitId]. */
+    internal fun countRequest(format: AdFormat, adUnitId: String): Int {
+        val count = requestCounts.merge(adUnitId, 1, Int::plus) ?: 1
+        log("$format requesting: $adUnitId (request #$count for this unit)")
+        return count
+    }
+
+    /** Current cumulative request count for [adUnitId] (0 if none issued yet). */
+    @JvmStatic
+    fun requestCount(adUnitId: String): Int = requestCounts[adUnitId] ?: 0
+
+    /** Resets all request counters (e.g. between test runs). */
+    @JvmStatic
+    fun resetRequestCounts() = requestCounts.clear()
 
     internal fun log(message: String) {
         if (loggingEnabled) Log.d(TAG, message)
