@@ -33,6 +33,9 @@ enum class AdFormat {
  */
 interface AdEventListener {
 
+    /** A request for a new ad was just fired to the SDK (each attempt, including retries). */
+    fun onAdRequested(format: AdFormat, adUnitId: String) {}
+
     /** A new ad finished loading and is cached / ready to show. */
     fun onAdLoaded(format: AdFormat, adUnitId: String) {}
 

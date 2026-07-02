@@ -41,6 +41,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         status = findViewById(R.id.tvStatus)
+        // Long-press the status text to dump the live fill/show-rate report (also logged to logcat).
+        status.setOnLongClickListener {
+            SampleApp.showRate.logReport()
+            setStatus(SampleApp.showRate.report())
+            true
+        }
         bannerContainer = findViewById(R.id.bannerContainer)
         nativeAdView = findViewById(R.id.nativeAdView)
         templateGroup = findViewById(R.id.rgTemplate)

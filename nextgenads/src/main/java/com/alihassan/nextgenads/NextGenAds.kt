@@ -384,6 +384,7 @@ object NextGenAds {
     internal fun countRequest(format: AdFormat, adUnitId: String): Int {
         val count = requestCounts.merge(adUnitId, 1, Int::plus) ?: 1
         log("$format requesting: $adUnitId (request #$count for this unit)")
+        dispatch { it.onAdRequested(format, adUnitId) }
         return count
     }
 

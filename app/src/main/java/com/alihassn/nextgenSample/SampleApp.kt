@@ -3,6 +3,7 @@ package com.alihassn.nextgenSample
 import android.app.Application
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAdManager
+import com.alihassan.nextgenads.events.ShowRateTracker
 import com.alihassan.nextgenads.nativead.NativeAdHelper
 
 /**
@@ -22,6 +23,9 @@ class SampleApp : Application() {
         // Firebase Analytics. No-ops until google-services.json is added.
         NextGenAds.registerEventListener(FirebaseAdEventListener(this))
 
+        // Live fill/show-rate measurement — long-press the status text to dump the report.
+        NextGenAds.registerEventListener(showRate)
+
         // Warm the native cache as soon as the SDK is ready, and again on network recovery — the
         // biggest lever on show-rate. registerWarmUp runs the task on init completion and whenever
         // connectivity returns after a drop.
@@ -37,5 +41,9 @@ class SampleApp : Application() {
 
         // Google's official native test unit (matches MainActivity.NATIVE_UNIT).
         const val NATIVE_UNIT = "ca-app-pub-3940256099942544/2247696110"
+
+        /** App-wide fill/show-rate tracker; report via [ShowRateTracker.report]. */
+        @JvmStatic
+        val showRate = ShowRateTracker()
     }
 }
