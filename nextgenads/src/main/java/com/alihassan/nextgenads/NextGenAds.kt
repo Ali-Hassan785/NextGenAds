@@ -1,8 +1,11 @@
 package com.alihassan.nextgenads
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.alihassan.nextgenads.events.AdEventListener
 import com.alihassan.nextgenads.events.AdFormat
@@ -57,6 +60,135 @@ object NextGenAds {
     /** Single gate every helper consults: ads are allowed only when enabled and not premium. */
     @JvmStatic
     fun canShowAds(): Boolean = enabled && !premium && !premiumProvider()
+
+    // ---------------------------------------------------------------------------------------------
+    // Request circuit breaker
+    //
+    // On a slow / offline connection, requests fail repeatedly. After
+    // [NextGenAdsConfig.maxRequestFailures] failures in a row with no success, new requests are
+    // paused for [NextGenAdsConfig.requestCooldownMs] (cached ads still show), then auto-resume. A
+    // single success resets the counter. Failures/successes are fed in centrally from the dispatch*
+    // hooks, so every format contributes to the same global count.
+    // ---------------------------------------------------------------------------------------------
+
+    private var consecutiveFailures = 0
+
+    @Volatile
+    private var cooldownUntilElapsed = 0L
+
+    /** True while the breaker is pausing new ad requests (cached ads can still be shown). */
+    @JvmStatic
+    fun isRequestPaused(): Boolean = SystemClock.elapsedRealtime() < cooldownUntilElapsed
+
+    /** Milliseconds remaining in the current request cooldown, or `0` when not paused. */
+    @JvmStatic
+    fun requestCooldownRemainingMs(): Long =
+        (cooldownUntilElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+
+    /**
+     * The gate every **request** site consults: a new ad may be requested only when ads are allowed
+     * ([canShowAds]) and the breaker isn't in cooldown. Use [canShowAds] (not this) to gate showing
+     * an already-loaded ad.
+     */
+    @JvmStatic
+    fun canRequest(): Boolean = canShowAds() && !isRequestPaused()
+
+    /** Manually clears the cooldown and failure count (e.g. when connectivity is restored). */
+    @JvmStatic
+    fun resetRequestBreaker() = synchronized(this) {
+        consecutiveFailures = 0
+        cooldownUntilElapsed = 0L
+    }
+
+    @Synchronized
+    internal fun recordRequestSuccess() {
+        consecutiveFailures = 0
+    }
+
+    @Synchronized
+    internal fun recordRequestFailure() {
+        if (isRequestPaused()) return // already paused; don't keep counting
+        consecutiveFailures++
+        val max = NextGenAdsConfig.maxRequestFailures
+        if (max in 1..consecutiveFailures) {
+            cooldownUntilElapsed = SystemClock.elapsedRealtime() + NextGenAdsConfig.requestCooldownMs
+            consecutiveFailures = 0
+            log(
+                "Request breaker tripped: $max failures in a row — pausing new ad requests for " +
+                    "${NextGenAdsConfig.requestCooldownMs / 1000}s",
+            )
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Warm-up registry + connectivity recovery
+    //
+    // The biggest lever on show-rate is preloading *early* and re-warming after a failure window.
+    // Register your preload calls once with [registerWarmUp]; they run when the SDK finishes
+    // initializing and again whenever [warmUp] is invoked — including automatically on network
+    // recovery via [enableConnectivityRecovery].
+    // ---------------------------------------------------------------------------------------------
+
+    private val warmUpTasks = CopyOnWriteArrayList<Runnable>()
+
+    @Volatile
+    private var connectivityRecoveryEnabled = false
+
+    /**
+     * Registers a preload task (e.g. `{ NativeAdHelper.preload(unit) }`) to warm the cache. Runs
+     * immediately if the SDK is already initialized and requests are allowed, and again on every
+     * [warmUp] (init completion, connectivity recovery). Re-registering the same instance is a no-op.
+     */
+    @JvmStatic
+    fun registerWarmUp(task: Runnable) {
+        if (!warmUpTasks.contains(task)) warmUpTasks.add(task)
+        if (initialized && canRequest()) runOnMain { runWarmUpTask(task) }
+    }
+
+    /** Runs every registered warm-up task (on the main thread), unless requests are paused/disabled. */
+    @JvmStatic
+    fun warmUp() {
+        if (warmUpTasks.isEmpty() || !canRequest()) return
+        val tasks = warmUpTasks.toList()
+        runOnMain { tasks.forEach { runWarmUpTask(it) } }
+    }
+
+    private fun runWarmUpTask(task: Runnable) {
+        try {
+            task.run()
+        } catch (t: Throwable) {
+            log("Warm-up task threw", t)
+        }
+    }
+
+    /**
+     * Starts listening for network recovery. When connectivity returns, the request breaker's
+     * cooldown is cleared and [warmUp] re-runs — so ads that failed on a dead/slow connection are
+     * re-requested the moment the network is back, maximising show-rate. Safe to call once (e.g.
+     * from `Application.onCreate`); repeat calls are no-ops. Requires `ACCESS_NETWORK_STATE`
+     * (declared by the library manifest).
+     */
+    @JvmStatic
+    fun enableConnectivityRecovery(context: Context) {
+        if (connectivityRecoveryEnabled) return
+        val cm = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                runOnMain {
+                    if (isRequestPaused()) log("Network available — clearing request breaker")
+                    resetRequestBreaker()
+                    warmUp()
+                }
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            connectivityRecoveryEnabled = true
+        } catch (t: Throwable) {
+            log("Could not register connectivity recovery", t)
+        }
+    }
 
     @Volatile
     private var initialized = false
@@ -114,7 +246,10 @@ object NextGenAds {
                     callbacks = pendingCallbacks.toList()
                     pendingCallbacks.clear()
                 }
-                mainHandler.post { callbacks.forEach { it.run() } }
+                mainHandler.post {
+                    callbacks.forEach { it.run() }
+                    warmUp() // fire any registered preload tasks now the SDK is ready
+                }
             }
         }, "NextGenAds-init").start()
     }
@@ -189,11 +324,15 @@ object NextGenAds {
         }
     }
 
-    internal fun dispatchLoaded(format: AdFormat, adUnitId: String) =
+    internal fun dispatchLoaded(format: AdFormat, adUnitId: String) {
+        recordRequestSuccess()
         dispatch { it.onAdLoaded(format, adUnitId) }
+    }
 
-    internal fun dispatchFailedToLoad(format: AdFormat, adUnitId: String, error: LoadAdError) =
+    internal fun dispatchFailedToLoad(format: AdFormat, adUnitId: String, error: LoadAdError) {
+        recordRequestFailure()
         dispatch { it.onAdFailedToLoad(format, adUnitId, error) }
+    }
 
     internal fun dispatchShown(format: AdFormat, adUnitId: String) =
         dispatch { it.onAdShown(format, adUnitId) }

@@ -16,6 +16,8 @@ import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import android.os.Handler
+import android.os.Looper
 import java.util.ArrayDeque
 
 /**
@@ -27,12 +29,17 @@ import java.util.ArrayDeque
  */
 object BannerAdHelper {
 
+    private val handler = Handler(Looper.getMainLooper())
     private val pool = HashMap<String, ArrayDeque<AdView>>()
     private val inFlight = HashMap<String, Int>()
 
     /** Maximum number of preloaded banners cached per ad unit. */
     @JvmStatic
     var maxCachePerUnit = 2
+
+    /** Maximum automatic reload attempts after a failed banner load (backoff: 1s, 2s, 4s …). */
+    @JvmStatic
+    var maxRetries = 2
 
     /**
      * Preloads up to [count] banners (capped by [maxCachePerUnit]) into a detached cache so that a
@@ -51,7 +58,7 @@ object BannerAdHelper {
         count: Int = 1,
         widthDp: Int = screenWidthDp(activity),
     ) {
-        if (!NextGenAds.canShowAds()) return
+        if (!NextGenAds.canRequest()) return
         val target = count.coerceIn(0, maxCachePerUnit)
         while (cachedCount(adUnitId) + inFlightCount(adUnitId) < target) {
             incFlight(adUnitId)
@@ -59,30 +66,17 @@ object BannerAdHelper {
             // dropped. The AdView is built inside the block so we never touch the SDK pre-init.
             NextGenAds.whenInitialized {
                 val adView = AdView(activity)
-                val adSize =
-                    AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp)
-                NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
-                adView.loadAd(
-                    BannerAdRequest.Builder(adUnitId, adSize).build(),
-                    object : AdLoadCallback<BannerAd> {
-                        override fun onAdLoaded(ad: BannerAd) {
-                            NextGenAds.runOnMain {
-                                decFlight(adUnitId)
-                                attachEvents(ad, adUnitId)
-                                offer(adUnitId, adView)
-                                NextGenAds.log("Banner preloaded: $adUnitId")
-                                NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
-                            }
-                        }
-
-                        override fun onAdFailedToLoad(adError: LoadAdError) {
-                            NextGenAds.runOnMain {
-                                decFlight(adUnitId)
-                                NextGenAds.log("Banner preload failed ($adUnitId): $adError")
-                                NextGenAds.dispatchFailedToLoad(AdFormat.BANNER, adUnitId, adError)
-                            }
-                        }
+                val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp)
+                loadBannerWithRetry(
+                    adView, adUnitId, adSize, attempt = 0,
+                    onLoaded = { ad ->
+                        decFlight(adUnitId)
+                        attachEvents(ad, adUnitId)
+                        offer(adUnitId, adView)
+                        NextGenAds.log("Banner preloaded: $adUnitId")
+                        NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
                     },
+                    onFailed = { decFlight(adUnitId) },
                 )
             }
         }
@@ -125,6 +119,13 @@ object BannerAdHelper {
             return
         }
 
+        // No cached banner: only fire a fresh request when the breaker allows it.
+        if (NextGenAds.isRequestPaused()) {
+            NextGenAds.log("Banner request paused by breaker: $adUnitId")
+            container.visibility = View.GONE
+            return
+        }
+
         val shimmer = LayoutInflater.from(activity)
             .inflate(R.layout.ngad_shimmer_banner, container, false) as ShimmerFrameLayout
         container.removeAllViews()
@@ -141,35 +142,69 @@ object BannerAdHelper {
         )
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.
         NextGenAds.whenInitialized {
-            NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
-            adView.loadAd(
-                BannerAdRequest.Builder(adUnitId, adSize).build(),
-                object : AdLoadCallback<BannerAd> {
-                    override fun onAdLoaded(ad: BannerAd) {
-                        NextGenAds.runOnMain {
-                            shimmer.stopShimmer()
-                            container.removeView(shimmer)
-                            adView.visibility = View.VISIBLE
-                            attachEvents(ad, adUnitId)
-                            NextGenAds.log("Banner loaded: $adUnitId")
-                            NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
-                            onLoaded?.invoke()
-                        }
-                    }
-
-                    override fun onAdFailedToLoad(adError: LoadAdError) {
-                        NextGenAds.runOnMain {
-                            shimmer.stopShimmer()
-                            container.removeAllViews()
-                            container.visibility = View.GONE
-                            NextGenAds.log("Banner failed ($adUnitId): $adError")
-                            NextGenAds.dispatchFailedToLoad(AdFormat.BANNER, adUnitId, adError)
-                            onFailed?.invoke(adError)
-                        }
-                    }
+            loadBannerWithRetry(
+                adView, adUnitId, adSize, attempt = 0,
+                onLoaded = { ad ->
+                    shimmer.stopShimmer()
+                    container.removeView(shimmer)
+                    adView.visibility = View.VISIBLE
+                    attachEvents(ad, adUnitId)
+                    NextGenAds.log("Banner loaded: $adUnitId")
+                    NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
+                    onLoaded?.invoke()
+                },
+                onFailed = { error ->
+                    shimmer.stopShimmer()
+                    container.removeAllViews()
+                    container.visibility = View.GONE
+                    onFailed?.invoke(error)
                 },
             )
         }
+    }
+
+    /**
+     * Loads [adView] with exponential-backoff retries. [onLoaded] fires on success; [onFailed] only
+     * once every retry is exhausted (or the request breaker paused new requests). Each failed
+     * attempt dispatches to the global listeners; callbacks are delivered on the main thread.
+     */
+    private fun loadBannerWithRetry(
+        adView: AdView,
+        adUnitId: String,
+        adSize: AdSize,
+        attempt: Int,
+        onLoaded: (BannerAd) -> Unit,
+        onFailed: (LoadAdError) -> Unit,
+    ) {
+        NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
+        adView.loadAd(
+            BannerAdRequest.Builder(adUnitId, adSize).build(),
+            object : AdLoadCallback<BannerAd> {
+                override fun onAdLoaded(ad: BannerAd) {
+                    NextGenAds.runOnMain { onLoaded(ad) }
+                }
+
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    NextGenAds.runOnMain {
+                        NextGenAds.dispatchFailedToLoad(AdFormat.BANNER, adUnitId, adError)
+                        if (attempt < maxRetries && !NextGenAds.isRequestPaused()) {
+                            val delayMs = 1000L shl attempt // 1s, 2s, 4s …
+                            NextGenAds.log(
+                                "Banner failed ($adUnitId): $adError — retry " +
+                                    "${attempt + 1}/$maxRetries in ${delayMs}ms",
+                            )
+                            handler.postDelayed(
+                                { loadBannerWithRetry(adView, adUnitId, adSize, attempt + 1, onLoaded, onFailed) },
+                                delayMs,
+                            )
+                        } else {
+                            NextGenAds.log("Banner gave up after ${attempt + 1} attempts ($adUnitId): $adError")
+                            onFailed(adError)
+                        }
+                    }
+                }
+            },
+        )
     }
 
     /**

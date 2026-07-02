@@ -66,7 +66,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
     /** Preloads the ad if not already available / in flight. */
     @JvmOverloads
     fun load(onResult: ((Boolean) -> Unit)? = null) {
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canRequest()) {
             onResult?.invoke(false)
             return
         }

@@ -31,6 +31,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
     private var retryCount = 0
     private var lastShownElapsed = 0L
     private var triggerCount = 0
+    // Callbacks waiting on the single in-flight load. Concurrent load() callers all get notified,
+    // instead of every caller-after-the-first being silently dropped.
+    private val pending = mutableListOf<(Boolean) -> Unit>()
 
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
@@ -52,7 +55,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
     /** Preloads the ad if not already available / in flight. */
     @JvmOverloads
     fun load(onResult: ((Boolean) -> Unit)? = null) {
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canRequest()) {
             onResult?.invoke(false)
             return
         }
@@ -60,14 +63,21 @@ class InterstitialAdHelper(private val adUnitId: String) {
             onResult?.invoke(true)
             return
         }
-        if (loading) return
+        onResult?.let { pending.add(it) }
+        if (loading) return // a load is already in flight; this caller is parked in `pending`
         loading = true
         // Defer the request until the SDK is ready so preloads issued during app start are queued
         // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
-        NextGenAds.whenInitialized { requestAd(onResult) }
+        NextGenAds.whenInitialized { requestAd() }
     }
 
-    private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+    private fun flushPending(loaded: Boolean) {
+        val waiters = pending.toList()
+        pending.clear()
+        waiters.forEach { it(loaded) }
+    }
+
+    private fun requestAd() {
         NextGenAds.countRequest(AdFormat.INTERSTITIAL, adUnitId)
         InterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
@@ -79,7 +89,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                         retryCount = 0
                         NextGenAds.log("Interstitial loaded: $adUnitId")
                         NextGenAds.dispatchLoaded(AdFormat.INTERSTITIAL, adUnitId)
-                        onResult?.invoke(true)
+                        flushPending(true)
                     }
                 }
 
@@ -89,16 +99,58 @@ class InterstitialAdHelper(private val adUnitId: String) {
                         loading = false
                         NextGenAds.log("Interstitial failed ($adUnitId): $adError")
                         NextGenAds.dispatchFailedToLoad(AdFormat.INTERSTITIAL, adUnitId, adError)
-                        if (retryCount < maxRetries) {
+                        if (retryCount < maxRetries && !NextGenAds.isRequestPaused()) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
                             handler.postDelayed({ load() }, delayMs)
+                        } else {
+                            retryCount = 0 // reset budget so a later load() can retry afresh
                         }
-                        onResult?.invoke(false)
+                        flushPending(false)
                     }
                 }
             },
         )
+    }
+
+    /**
+     * On-demand "request and show": show the cached ad immediately if one is ready, otherwise
+     * request one and show it the moment it loads — a higher-show-rate alternative to [show] for a
+     * trigger point where nothing was preloaded.
+     *
+     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onDismiss] fires so the caller
+     * proceeds, and the in-flight load is left to warm the cache for next time. `0` waits for the
+     * load result (which is itself bounded by the retry budget).
+     *
+     * [onDismiss] is invoked exactly once — after the ad is dismissed, on failure/timeout, or
+     * synchronously when ads are disabled.
+     */
+    @JvmOverloads
+    fun loadAndShow(activity: Activity, timeoutMs: Long = 0L, onDismiss: () -> Unit = {}) {
+        if (!NextGenAds.canShowAds()) {
+            onDismiss()
+            return
+        }
+        if (interstitialAd != null) {
+            show(activity, onDismiss)
+            return
+        }
+
+        var settled = false
+        val timeoutRunnable = Runnable {
+            if (settled) return@Runnable
+            settled = true
+            NextGenAds.log("Interstitial load timed out ($adUnitId); proceeding")
+            onDismiss()
+        }
+        if (timeoutMs > 0) handler.postDelayed(timeoutRunnable, timeoutMs)
+
+        load { loaded ->
+            if (settled) return@load // timeout already let the caller proceed
+            settled = true
+            handler.removeCallbacks(timeoutRunnable)
+            if (loaded && interstitialAd != null) show(activity, onDismiss) else onDismiss()
+        }
     }
 
     /**
@@ -205,6 +257,16 @@ object Interstitials {
     /** Convenience: preload an ad unit. */
     @JvmStatic
     fun preload(adUnitId: String) = get(adUnitId).load()
+
+    /** Convenience: request (if needed) and show [adUnitId] on demand, bounded by [timeoutMs]. */
+    @JvmStatic
+    @JvmOverloads
+    fun loadAndShow(
+        activity: Activity,
+        adUnitId: String,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
 
     /**
      * Convenience: counter-gated show for an ad unit — shows the interstitial on every [every]-th

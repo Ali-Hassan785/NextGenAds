@@ -47,7 +47,7 @@ object NativeAdPreloader {
      */
     @JvmStatic
     fun preload(adUnitId: String) {
-        if (!NextGenAds.canShowAds()) return
+        if (!NextGenAds.canRequest()) return
 
         val slot = slot(adUnitId)
         synchronized(this) {
