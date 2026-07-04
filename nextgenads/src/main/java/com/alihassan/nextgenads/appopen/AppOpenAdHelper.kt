@@ -49,6 +49,15 @@ class AppOpenAdHelper(private val adUnitId: String) {
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
 
+    /**
+     * When `true`, the helper automatically requests the next ad after one is shown/dismissed (and
+     * when [show] finds none ready). Default `false` so a single [show] / [loadAndShow] issues a
+     * **single** request — warm the next one explicitly via [load] / [AppOpenAds.preload]. This
+     * prevents the "requested twice per show" behaviour. [AppOpenAdManager] re-warms itself via the
+     * dismiss callback, so it doesn't need this on.
+     */
+    var autoReload = false
+
     /** Minimum gap (ms) between two app-open ads. `0` disables frequency capping. */
     var minIntervalMs = 0L
 
@@ -180,7 +189,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
         if (ad == null || isExpired || capped) {
             if (isExpired) appOpenAd = null
             onDismiss()
-            load() // make sure the next attempt has a fresh ad ready
+            if (autoReload) load() // opt-in: make the next attempt have a fresh ad ready
             return false
         }
 
@@ -196,7 +205,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     appOpenAd = null
                     showing = false
                     lastShownElapsed = SystemClock.elapsedRealtime()
-                    load()
+                    if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.APP_OPEN, adUnitId)
                     onDismiss()
                 }
@@ -208,7 +217,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     showing = false
                     NextGenAds.log("AppOpen show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.APP_OPEN, adUnitId, fullScreenContentError)
-                    load()
+                    if (autoReload) load()
                     onDismiss()
                 }
             }
@@ -261,18 +270,42 @@ object AppOpenAds {
 }
 
 /**
+ * Marker interface: an [Activity] implementing it is never covered by the auto-shown app-open ad.
+ * Use it for splash, onboarding, paywall or in-app-purchase screens where a full-screen ad would
+ * hurt UX (or violate policy):
+ *
+ * ```
+ * class SplashActivity : AppCompatActivity(), HideAppOpenAd { … }
+ * ```
+ *
+ * Alternative for activities you can't edit (e.g. from another library): register the class with
+ * [AppOpenAdManager.skipOn].
+ */
+interface HideAppOpenAd
+
+/**
  * Drop-in manager that shows an app-open ad each time the user brings the app back to the
- * foreground, keeping the ad warm in between. Wire it once, typically from `Application.onCreate`
- * **after** [NextGenAds.initialize]:
+ * foreground. Wire it once, typically from `Application.onCreate` **after** [NextGenAds.initialize]:
  *
  * ```
  * AppOpenAdManager.install(this, "ca-app-pub-…/appopen")
+ *     .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
  * ```
  *
- * The first foreground after a cold start is skipped by default ([showOnColdStart]) — at that point
- * the ad usually isn't loaded yet and showing one over your splash hurts UX. Set [enabled] to
- * `false` to pause auto-showing (e.g. while a different full-screen flow is running); the premium /
- * kill-switch state in [NextGenAds] is always honoured regardless.
+ * **When it requests:** only on a genuine background→foreground transition, and only on demand at
+ * that moment (via the helper's `loadAndShow`). It does **not** request on install / cold start, and
+ * it does **not** pre-warm a "next" ad after showing one — so no ad is ever requested before the app
+ * has actually been backgrounded, and a request made on return is always coupled to a show (it waits
+ * for the load; see [loadTimeoutMs]). The trade-off is that the ad loads at the moment of return
+ * rather than being instantly ready.
+ *
+ * The first foreground of a cold start is skipped by default ([showOnColdStart]) since it isn't a
+ * return-from-background. Set [enabled] to `false` to pause auto-showing (e.g. while a different
+ * full-screen flow is running); the premium / kill-switch state in [NextGenAds] is always honoured.
+ *
+ * Per-activity exclusion: activities implementing [HideAppOpenAd] or registered via [skipOn] are
+ * skipped — nothing is requested or shown on them. Ad activities of the Mobile Ads SDK itself are
+ * always skipped, so an app-open can never stack on top of another full-screen ad.
  */
 class AppOpenAdManager private constructor(
     application: Application,
@@ -284,6 +317,9 @@ class AppOpenAdManager private constructor(
     // leak it. Cleared on pause too, but the weak ref is the real safety net.
     private var currentActivity: WeakReference<Activity> = WeakReference(null)
     private var coldStart = true
+    // Activity classes excluded from auto-show (exact class match). ConcurrentHashMap-backed so
+    // skipOn/allowOn can be called from any thread while onStart reads on main.
+    private val skipped = ConcurrentHashMap.newKeySet<Class<out Activity>>()
 
     /** Auto-show on foreground. Set `false` to suspend without tearing the manager down. */
     @Volatile
@@ -293,10 +329,43 @@ class AppOpenAdManager private constructor(
     @Volatile
     var showOnColdStart = false
 
+    /**
+     * Excludes [activities] from the auto-shown app-open ad — foregrounding onto any of them keeps
+     * the cached ad for the next allowed screen instead of showing it. Returns `this` for chaining
+     * off [install]. For activities you own, implementing [HideAppOpenAd] works without
+     * registration.
+     */
+    fun skipOn(vararg activities: Class<out Activity>): AppOpenAdManager = apply {
+        skipped.addAll(activities)
+    }
+
+    /** Removes [activities] from the [skipOn] exclusion list. */
+    fun allowOn(vararg activities: Class<out Activity>): AppOpenAdManager = apply {
+        activities.forEach { skipped.remove(it) }
+    }
+
+    /** `true` when the auto-show must not cover [activity]. */
+    private fun isSkipped(activity: Activity): Boolean =
+        activity is HideAppOpenAd ||
+            activity.javaClass in skipped ||
+            // Never stack on top of another full-screen ad: the Mobile Ads SDK hosts interstitial /
+            // rewarded / app-open content in its own activities.
+            activity.javaClass.name.startsWith("com.google.android.libraries.ads") ||
+            activity.javaClass.name.startsWith("com.google.android.gms.ads")
+
+    /**
+     * Upper bound (ms) on the on-foreground load before proceeding without showing. Default `0`
+     * waits for the load result (itself bounded by the helper's retry budget) so a request made on
+     * return actually results in a show — a positive value risks requesting an ad that then times
+     * out unshown. Set a bound only if you'd rather skip the ad than wait on a slow network.
+     */
+    @Volatile
+    var loadTimeoutMs = 0L
+
     init {
         application.registerActivityLifecycleCallbacks(this)
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
-        helper.load()
+        // No load here: nothing is requested until the app genuinely returns from the background.
     }
 
     /** Called by [ProcessLifecycleOwner] when the app enters the foreground. */
@@ -304,12 +373,17 @@ class AppOpenAdManager private constructor(
         val wasCold = coldStart
         coldStart = false
         if (!enabled) return
-        if (wasCold && !showOnColdStart) {
-            helper.load() // warm up for the next foreground instead
+        // The first foreground of a cold start is NOT a return-from-background — request nothing.
+        if (wasCold && !showOnColdStart) return
+        val activity = currentActivity.get() ?: return
+        if (isSkipped(activity)) {
+            NextGenAds.log("AppOpen skipped on ${activity.javaClass.simpleName}")
             return
         }
-        val activity = currentActivity.get()
-        if (activity != null) helper.show(activity) else helper.load()
+        // Genuine background→foreground: request and show on demand. No pre-warm and no post-show
+        // reload (autoReload stays off), so a request only ever happens here — at the moment of a
+        // real return — and never for a "next" ad after one is shown.
+        helper.loadAndShow(activity, loadTimeoutMs)
     }
 
     override fun onActivityResumed(activity: Activity) {

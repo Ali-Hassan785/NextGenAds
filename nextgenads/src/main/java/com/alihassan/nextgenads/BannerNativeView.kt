@@ -141,7 +141,9 @@ class BannerNativeView @JvmOverloads constructor(
             return existing
         }
         removeAllViews()
-        val view = NativeTemplateView(context).also { it.setTemplate(nativeTemplate) }
+        val view = NativeTemplateView(context).also {
+            it.setTemplate(nativeTemplate)
+        }
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         nativeView = view
         return view

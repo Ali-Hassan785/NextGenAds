@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Shimmer placeholder for ngad_native_banner: icon + two short lines + trailing CTA chip. -->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
-    android:minHeight="68dp"
-    android:paddingLeft="10dp"
-    android:paddingTop="8dp"
-    android:paddingRight="10dp"
-    android:paddingBottom="8dp">
+    android:elevation="3dp"
+    android:minHeight="72dp"
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,8 +15,8 @@
         android:orientation="horizontal">
 
         <View
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_marginEnd="10dp"
             android:background="@drawable/ngad_bg_placeholder" />
 
@@ -29,18 +28,18 @@
 
             <View
                 android:layout_width="match_parent"
-                android:layout_height="12dp"
+                android:layout_height="13dp"
                 android:background="@drawable/ngad_bg_placeholder" />
 
             <View
-                android:layout_width="140dp"
-                android:layout_height="10dp"
-                android:layout_marginTop="7dp"
+                android:layout_width="120dp"
+                android:layout_height="11dp"
+                android:layout_marginTop="6dp"
                 android:background="@drawable/ngad_bg_placeholder" />
         </LinearLayout>
 
         <View
-            android:layout_width="66dp"
+            android:layout_width="70dp"
             android:layout_height="34dp"
             android:layout_marginStart="10dp"
             android:background="@drawable/ngad_bg_placeholder" />

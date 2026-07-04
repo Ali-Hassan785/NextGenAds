@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Shimmer placeholder for ngad_native_media_left: square media on the left, text + CTA on the right. -->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
-    android:padding="12dp">
+    android:elevation="3dp"
+    android:padding="14dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,24 +20,24 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="120dp"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
             <View
                 android:layout_width="match_parent"
-                android:layout_height="18dp"
+                android:layout_height="14dp"
                 android:background="@drawable/ngad_bg_placeholder" />
 
             <View
                 android:layout_width="match_parent"
-                android:layout_height="14dp"
+                android:layout_height="11dp"
                 android:layout_marginTop="8dp"
                 android:background="@drawable/ngad_bg_placeholder" />
 
             <View
-                android:layout_width="180dp"
-                android:layout_height="14dp"
+                android:layout_width="150dp"
+                android:layout_height="11dp"
                 android:layout_marginTop="6dp"
                 android:background="@drawable/ngad_bg_placeholder" />
 
@@ -46,7 +48,7 @@
 
             <View
                 android:layout_width="96dp"
-                android:layout_height="38dp"
+                android:layout_height="36dp"
                 android:layout_gravity="end"
                 android:background="@drawable/ngad_bg_placeholder" />
         </LinearLayout>

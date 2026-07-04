@@ -13,4 +13,7 @@
     <color name="ngad_ad_badge_text">#FF5A4500</color>
     <color name="ngad_shimmer_block">#FFE9ECF1</color>
     <color name="ngad_media_bg">#FFEFF2F7</color>
+    <!-- Collapse / close controls on the collapsible template. -->
+    <color name="ngad_control">#FF6B7280</color>
+    <color name="ngad_control_bg">#14000000</color>
 </resources>

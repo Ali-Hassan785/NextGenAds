@@ -7,6 +7,7 @@
         <enum name="large" value="2" />
         <enum name="banner" value="3" />
         <enum name="media_left" value="4" />
+        <enum name="collapsible" value="5" />
     </attr>
 
     <declare-styleable name="NativeTemplateView">

@@ -4,7 +4,13 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
@@ -30,6 +36,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
     private var loading = false
     private var retryCount = 0
     private var lastShownElapsed = 0L
+    private var loadStartElapsed = 0L
     private var triggerCount = 0
     // Callbacks waiting on the single in-flight load. Concurrent load() callers all get notified,
     // instead of every caller-after-the-first being silently dropped.
@@ -49,8 +56,18 @@ class InterstitialAdHelper(private val adUnitId: String) {
     /** Minimum gap (ms) between two interstitials. `0` disables frequency capping. */
     var minIntervalMs = 0L
 
+    /**
+     * Duration (ms) of the full-screen "Loading ad…" interlude displayed before the interstitial
+     * opens, so the ad doesn't pop in abruptly. Set to `0` to show the ad immediately.
+     */
+    var loadingOverlayMs = 1000L
+
     val isReady: Boolean
         get() = interstitialAd != null
+
+    /** Wall-clock time (ms) the most recent successful load took, or `-1` if none has loaded yet. */
+    var lastLoadMs: Long = -1L
+        private set
 
     /** Preloads the ad if not already available / in flight. */
     @JvmOverloads
@@ -78,6 +95,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
     }
 
     private fun requestAd() {
+        loadStartElapsed = SystemClock.elapsedRealtime()
         NextGenAds.countRequest(AdFormat.INTERSTITIAL, adUnitId)
         InterstitialAd.load(
             AdRequest.Builder(adUnitId).build(),
@@ -87,7 +105,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
                         interstitialAd = ad
                         loading = false
                         retryCount = 0
-                        NextGenAds.log("Interstitial loaded: $adUnitId")
+                        val loadMs = SystemClock.elapsedRealtime() - loadStartElapsed
+                        lastLoadMs = loadMs
+                        NextGenAds.log("Interstitial loaded: $adUnitId (load ${loadMs}ms)")
                         NextGenAds.dispatchLoaded(AdFormat.INTERSTITIAL, adUnitId)
                         flushPending(true)
                     }
@@ -97,7 +117,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
                     NextGenAds.runOnMain {
                         interstitialAd = null
                         loading = false
-                        NextGenAds.log("Interstitial failed ($adUnitId): $adError")
+                        val loadMs = SystemClock.elapsedRealtime() - loadStartElapsed
+                        NextGenAds.log("Interstitial failed ($adUnitId) after ${loadMs}ms: $adError")
                         NextGenAds.dispatchFailedToLoad(AdFormat.INTERSTITIAL, adUnitId, adError)
                         if (retryCount < maxRetries && !NextGenAds.isRequestPaused()) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
@@ -173,14 +194,22 @@ class InterstitialAdHelper(private val adUnitId: String) {
             return false
         }
 
+        var overlay: View? = null
+        fun dismissOverlay() {
+            overlay?.let { removeLoadingOverlay(it) }
+            overlay = null
+        }
+
         ad.adEventCallback = object : InterstitialAdEventCallback {
             override fun onAdShowedFullScreenContent() {
+                NextGenAds.runOnMain { dismissOverlay() }
                 NextGenAds.log("Interstitial shown: $adUnitId")
                 NextGenAds.dispatchShown(AdFormat.INTERSTITIAL, adUnitId)
             }
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
+                    dismissOverlay()
                     interstitialAd = null
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     if (autoReload) load()
@@ -191,6 +220,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
 
             override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
                 NextGenAds.runOnMain {
+                    dismissOverlay()
                     interstitialAd = null
                     NextGenAds.log("Interstitial show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.INTERSTITIAL, adUnitId, fullScreenContentError)
@@ -212,8 +242,80 @@ class InterstitialAdHelper(private val adUnitId: String) {
             }
         }
         NextGenAds.log("Interstitial show requested: $adUnitId")
-        ad.show(activity)
+        if (loadingOverlayMs <= 0) {
+            ad.show(activity)
+            return true
+        }
+
+        // Full-screen "Loading ad…" interlude: cover the screen for loadingOverlayMs, then open the
+        // ad. The overlay is a view attached to the activity's own decor (not a separate Dialog
+        // window) so it fills the whole screen and fades in smoothly with no window-handoff flash.
+        // It stays up until the ad actually renders (removed in the shown/failed callbacks above) so
+        // the underlying screen never shows through.
+        overlay = showLoadingOverlay(activity)
+        handler.postDelayed({
+            if (activity.isFinishing || activity.isDestroyed) {
+                dismissOverlay()
+                onDismiss() // ad stays cached for the next trigger
+                return@postDelayed
+            }
+            ad.show(activity)
+        }, loadingOverlayMs)
         return true
+    }
+
+    /**
+     * Attaches a full-screen "Loading ad…" view to the activity's decor view and fades it in.
+     * Returns the attached view (or `null` if it couldn't be attached), to be passed to
+     * [removeLoadingOverlay] once the ad renders.
+     */
+    private fun showLoadingOverlay(activity: Activity): View? = runCatching {
+        val root = activity.window?.decorView as? ViewGroup ?: return null
+        val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_ad_loading, root, false)
+        view.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.FILL,
+        )
+        // Sit above everything (incl. system-bar backgrounds) and swallow touches to the screen below.
+        view.isClickable = true
+        view.elevation = 1_000_000f
+        view.alpha = 0f
+        root.addView(view)
+        view.bringToFront()
+        view.animate().alpha(1f).setDuration(OVERLAY_FADE_MS).start()
+        view
+    }.getOrNull()
+
+    private fun removeLoadingOverlay(view: View) {
+        if (view.parent !is ViewGroup) return
+        view.animate().alpha(0f).setDuration(OVERLAY_FADE_MS).withEndAction {
+            (view.parent as? ViewGroup)?.removeView(view)
+        }.start()
+        // Guard against the end-action never firing (e.g. detached window): hard-remove shortly after.
+        view.postDelayed({ (view.parent as? ViewGroup)?.removeView(view) }, OVERLAY_FADE_MS + 50)
+    }
+
+    /**
+     * On a gated-in trigger, either shows the cached ad or — when [forceLoad] is `true` and nothing
+     * is cached — requests one on demand and shows it as soon as it loads (via [loadAndShow]),
+     * bounded by [timeoutMs]. With [forceLoad] `false` this is a plain [show] that skips when no ad
+     * is ready.
+     *
+     * @return `true` if an ad is being shown or (when forced) is being loaded to show; `false` only
+     *   when nothing is ready and [forceLoad] is off — in which case [onDismiss] has already fired.
+     */
+    private fun showOrForceLoad(
+        activity: Activity,
+        forceLoad: Boolean,
+        timeoutMs: Long,
+        onDismiss: () -> Unit,
+    ): Boolean {
+        if (forceLoad && interstitialAd == null) {
+            loadAndShow(activity, timeoutMs, onDismiss)
+            return true
+        }
+        return show(activity, onDismiss)
     }
 
     /**
@@ -222,26 +324,83 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * third level/screen transition. The readiness check and frequency cap of [show] still apply,
      * so a call can be counted but skip showing if no ad is ready.
      *
+     * When [forceLoad] is `true` and the gate opens with no ad cached, the ad is requested on demand
+     * and shown as soon as it loads (via [loadAndShow], bounded by [timeoutMs]) instead of skipping
+     * — so a counted trigger isn't wasted when nothing was preloaded. Leave it `false` (default) to
+     * only show an already-ready ad.
+     *
      * Because helpers are shared per ad unit (via [Interstitials]), the counter is app-wide for
      * that unit. [onDismiss] is always invoked (immediately when this call doesn't show an ad), so
      * callers can proceed uniformly.
      *
      * @param every show on every Nth call; values `<= 1` show on every call.
-     * @return `true` if an ad is being shown.
+     * @param forceLoad when the gate opens with no cached ad, load one on demand and show it.
+     * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
+     *   used when [forceLoad] is `true`.
+     * @return `true` if an ad is being shown (or, when forced, is being loaded to show).
      */
     @JvmOverloads
-    fun showOnCount(activity: Activity, every: Int = 1, onDismiss: () -> Unit = {}): Boolean {
+    fun showOnCount(
+        activity: Activity,
+        every: Int = 1,
+        forceLoad: Boolean = false,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ): Boolean {
         triggerCount++
         if (every > 1 && triggerCount % every != 0) {
             onDismiss()
             return false
         }
-        return show(activity, onDismiss)
+        return showOrForceLoad(activity, forceLoad, timeoutMs, onDismiss)
     }
 
-    /** Resets the [showOnCount] counter back to zero. */
+    /**
+     * "Show first, then every Nth" counter-gated show — shows on the **first** call and then on
+     * every [interval]-th call afterwards. With `interval = 4` an ad shows on call 1, 5, 9, 13, …
+     * (i.e. the first click, then after every 4 clicks). This differs from [showOnCount], which
+     * shows on multiples (N, 2N, 3N …) and never on the first call.
+     *
+     * When [forceLoad] is `true` and a gated-in call finds no cached ad, the ad is requested on
+     * demand and shown as soon as it loads (via [loadAndShow], bounded by [timeoutMs]) instead of
+     * skipping. Leave it `false` (default) to only show an already-ready ad.
+     *
+     * The readiness check and frequency cap of [show] still apply; [onDismiss] is always invoked so
+     * callers can proceed uniformly. Because helpers are shared per ad unit (via [Interstitials]),
+     * the counter is app-wide.
+     *
+     * @param interval clicks between shows after the first; values `<= 1` show on every call.
+     * @param forceLoad when a gated-in call has no cached ad, load one on demand and show it.
+     * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
+     *   used when [forceLoad] is `true`.
+     * @return `true` if an ad is being shown (or, when forced, is being loaded to show).
+     */
+    @JvmOverloads
+    fun showFirstThenEvery(
+        activity: Activity,
+        interval: Int = 1,
+        forceLoad: Boolean = false,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ): Boolean {
+        val count = ++triggerCount
+        // Show on 1, then 1 + interval, 1 + 2*interval … i.e. whenever (count - 1) is a multiple of interval.
+        val shouldShow = interval <= 1 || (count - 1) % interval == 0
+        if (!shouldShow) {
+            onDismiss()
+            return false
+        }
+        return showOrForceLoad(activity, forceLoad, timeoutMs, onDismiss)
+    }
+
+    /** Resets the [showOnCount] / [showFirstThenEvery] counter back to zero. */
     fun resetCounter() {
         triggerCount = 0
+    }
+
+    private companion object {
+        /** Fade duration (ms) for the loading overlay's enter/exit animation. */
+        const val OVERLAY_FADE_MS = 180L
     }
 }
 
@@ -270,7 +429,8 @@ object Interstitials {
 
     /**
      * Convenience: counter-gated show for an ad unit — shows the interstitial on every [every]-th
-     * call. See [InterstitialAdHelper.showOnCount].
+     * call. When [forceLoad] is `true` and the gate opens with no cached ad, one is loaded on demand
+     * (bounded by [timeoutMs]) and shown. See [InterstitialAdHelper.showOnCount].
      */
     @JvmStatic
     @JvmOverloads
@@ -278,6 +438,25 @@ object Interstitials {
         activity: Activity,
         adUnitId: String,
         every: Int = 1,
+        forceLoad: Boolean = false,
+        timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
-    ): Boolean = get(adUnitId).showOnCount(activity, every, onDismiss)
+    ): Boolean = get(adUnitId).showOnCount(activity, every, forceLoad, timeoutMs, onDismiss)
+
+    /**
+     * Convenience: "show first, then every Nth" counter-gated show — shows on the first call and
+     * then every [interval]-th call afterwards (call 1, 1 + interval, 1 + 2*interval …). When
+     * [forceLoad] is `true` and a gated-in call has no cached ad, one is loaded on demand (bounded
+     * by [timeoutMs]) and shown. See [InterstitialAdHelper.showFirstThenEvery].
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun showFirstThenEvery(
+        activity: Activity,
+        adUnitId: String,
+        interval: Int = 1,
+        forceLoad: Boolean = false,
+        timeoutMs: Long = 0L,
+        onDismiss: () -> Unit = {},
+    ): Boolean = get(adUnitId).showFirstThenEvery(activity, interval, forceLoad, timeoutMs, onDismiss)
 }

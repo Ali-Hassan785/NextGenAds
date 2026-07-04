@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
+    android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <TextView
             android:layout_width="wrap_content"
@@ -78,19 +84,48 @@
             android:layout_marginTop="8dp"
             android:minHeight="60dp" />
 
-        <!-- 3. Native -->
+        <!-- 3. Native / Banner (unified BannerNativeView) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="3. Native"
+            android:text="3. Native / Banner (unified view)"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Template:"
+            android:text="Ad type:"
+            android:textColor="#666666"
+            android:textSize="13sp" />
+
+        <RadioGroup
+            android:id="@+id/rgAdType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbTypeNative"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:checked="true"
+                android:text="Native" />
+
+            <RadioButton
+                android:id="@+id/rbTypeBanner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Banner" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Template (used when Ad type = Native):"
             android:textColor="#666666"
             android:textSize="13sp" />
 
@@ -138,7 +173,14 @@
                     android:id="@+id/rbMediaLeft"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
                     android:text="Media-left" />
+
+                <RadioButton
+                    android:id="@+id/rbCollapsible"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Collapsible" />
             </RadioGroup>
         </HorizontalScrollView>
 
@@ -193,6 +235,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Load &amp; show interstitial on demand" />
+
+        <Button
+            android:id="@+id/btnCounterInterstitial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Counter interstitial (1st, then every 4th click)" />
 
         <!-- 5. Rewarded -->
         <TextView
@@ -261,5 +309,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Show app open" />
-    </LinearLayout>
-</ScrollView>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Bottom-pinned live stats panel (fill / show-rate report across all formats). Tap to reset. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#22000000" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#0D000000"
+        android:fillViewport="true">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <TableLayout
+                android:id="@+id/statsTable"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="8dp" />
+        </HorizontalScrollView>
+    </ScrollView>
+</LinearLayout>

@@ -3,4 +3,8 @@
     <string name="ngad_ad_badge_label" translatable="false">Ad</string>
     <!-- Placeholder CTA text; replaced at runtime by the ad's call-to-action. -->
     <string name="ngad_cta_default">Install</string>
+    <!-- Collapsible template control. -->
+    <string name="ngad_collapse_desc">Hide ad media</string>
+    <!-- Full-screen interlude shown briefly before an interstitial opens. -->
+    <string name="ngad_ad_loading">Loading ad…</string>
 </resources>

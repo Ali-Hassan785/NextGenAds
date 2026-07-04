@@ -1,9 +1,15 @@
 package com.alihassn.nextgenSample
 
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
+import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.RadioGroup
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +23,9 @@ import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.consent.ConsentManager
+import com.alihassan.nextgenads.events.AdEventListener
+import com.alihassan.nextgenads.events.AdFormat
+import com.alihassan.nextgenads.events.ShowRateTracker
 import com.alihassan.nextgenads.interstitial.Interstitials
 import com.alihassan.nextgenads.nativead.NativeAdHelper
 import com.alihassan.nextgenads.rewarded.RewardedAds
@@ -26,9 +35,34 @@ import com.alihassan.nextgenads.nativead.NativeTemplate
 class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
+    private lateinit var statsTable: TableLayout
     private lateinit var bannerContainer: FrameLayout
     private lateinit var nativeAdView: BannerNativeView
     private lateinit var templateGroup: RadioGroup
+    private lateinit var adTypeGroup: RadioGroup
+
+    /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
+    private var counterClicks = 0
+
+    /** Refreshes the bottom stats panel whenever any ad event moves the show-rate counters. */
+    private val statsListener = object : AdEventListener {
+        override fun onAdRequested(format: AdFormat, adUnitId: String) = refreshStats()
+        override fun onAdLoaded(format: AdFormat, adUnitId: String) = refreshStats()
+        override fun onAdFailedToLoad(
+            format: AdFormat,
+            adUnitId: String,
+            error: com.google.android.libraries.ads.mobile.sdk.common.LoadAdError,
+        ) = refreshStats()
+        override fun onAdShown(format: AdFormat, adUnitId: String) = refreshStats()
+        override fun onAdFailedToShow(
+            format: AdFormat,
+            adUnitId: String,
+            error: com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError,
+        ) = refreshStats()
+        override fun onAdImpression(format: AdFormat, adUnitId: String) = refreshStats()
+        override fun onAdClicked(format: AdFormat, adUnitId: String) = refreshStats()
+        override fun onAdDismissed(format: AdFormat, adUnitId: String) = refreshStats()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,15 +75,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         status = findViewById(R.id.tvStatus)
-        // Long-press the status text to dump the live fill/show-rate report (also logged to logcat).
+        // Long-press the status text to dump the live fill/show-rate report to logcat.
         status.setOnLongClickListener {
             SampleApp.showRate.logReport()
-            setStatus(SampleApp.showRate.report())
             true
         }
+
+        // Bottom-pinned live stats table. Refreshes on every ad event; tap to reset the counters.
+        statsTable = findViewById(R.id.statsTable)
+        statsTable.setOnClickListener {
+            SampleApp.showRate.reset()
+            refreshStats()
+        }
+        refreshStats()
+        NextGenAds.registerEventListener(statsListener)
+
         bannerContainer = findViewById(R.id.bannerContainer)
         nativeAdView = findViewById(R.id.nativeAdView)
         templateGroup = findViewById(R.id.rgTemplate)
+        adTypeGroup = findViewById(R.id.rgAdType)
 
         // 1. Consent → initialize.
         findViewById<Button>(R.id.btnConsent).setOnClickListener { gatherConsentAndInit() }
@@ -68,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnPreloadInterstitial).setOnClickListener { preloadInterstitial() }
         findViewById<Button>(R.id.btnShowInterstitial).setOnClickListener { showInterstitial() }
         findViewById<Button>(R.id.btnLoadShowInterstitial).setOnClickListener { loadAndShowInterstitial() }
+        findViewById<Button>(R.id.btnCounterInterstitial).setOnClickListener { showInterstitialByCounter() }
 
         // 5. Rewarded.
         findViewById<Button>(R.id.btnPreloadRewarded).setOnClickListener { preloadRewarded() }
@@ -130,18 +175,43 @@ class MainActivity : AppCompatActivity() {
         R.id.rbLarge -> NativeTemplate.LARGE
         R.id.rbBanner -> NativeTemplate.BANNER
         R.id.rbMediaLeft -> NativeTemplate.MEDIA_LEFT
+        R.id.rbCollapsible -> NativeTemplate.COLLAPSIBLE
         else -> NativeTemplate.MEDIUM
     }
 
+    private fun selectedAdType(): AdType =
+        if (adTypeGroup.checkedRadioButtonId == R.id.rbTypeBanner) AdType.BANNER else AdType.NATIVE
+
+    /** Warms the cache for whichever format the unified view is set to. */
     private fun preloadNative() {
         if (!ensureReady()) return
-        NativeAdHelper.preload(NATIVE_UNIT, count = 1)
-        setStatus("Preloading native…")
+        if (selectedAdType() == AdType.BANNER) {
+            BannerAdHelper.preload(this, BANNER_UNIT, count = 1)
+            setStatus("Preloading banner (unified view)…")
+        } else {
+            NativeAdHelper.preload(NATIVE_UNIT, count = 1)
+            setStatus("Preloading native…")
+        }
     }
 
-    /** Binds an ad into the chosen template (instant if preloaded, otherwise loads on demand). */
+    /**
+     * Loads an ad into the single [BannerNativeView] based on the selected ad type — a banner, or a
+     * native ad rendered with the chosen template (instant if preloaded, otherwise on demand).
+     */
     private fun showNative() {
         if (!ensureReady()) return
+        val adType = selectedAdType()
+        if (adType == AdType.BANNER) {
+            setStatus("Showing banner (unified view)…")
+            nativeAdView.load(
+                adUnitId = BANNER_UNIT,
+                remoteEnabled = true,
+                adType = AdType.BANNER,
+                onLoaded = { setStatus("Banner shown ✓ (unified view)") },
+                onFailed = { setStatus("Banner failed to load") },
+            )
+            return
+        }
         val template = selectedTemplate()
         setStatus("Showing native (${template.name.lowercase()})…")
         nativeAdView.load(
@@ -191,6 +261,29 @@ class MainActivity : AppCompatActivity() {
             } else {
                 setStatus("Interstitial failed to load")
             }
+        }
+    }
+
+    /**
+     * Counter-gated interstitial: shows on the 1st click and then on every 4th click after that
+     * (clicks 1, 5, 9, 13 …). `forceLoad = true` loads an ad on demand at each gated-in click, so no
+     * ad is pre-warmed and — with [InterstitialAdHelper.autoReload] left off — none is requested
+     * after a dismiss. A request only ever happens at the moment an ad is about to be shown.
+     */
+    private fun showInterstitialByCounter() {
+        if (!ensureReady()) return
+        val helper = Interstitials.get(INTERSTITIAL_UNIT)
+        counterClicks++
+        // forceLoad = true: on a gated-in click with no cached ad, load one on demand (behind the
+        // loading overlay) and show it rather than skipping — bounded by a 5s timeout.
+        val shown = helper.showFirstThenEvery(this, interval = 4, forceLoad = true, timeoutMs = 5_000L) {
+            val load = if (helper.lastLoadMs >= 0) " · loaded in ${helper.lastLoadMs}ms" else ""
+            setStatus("Interstitial dismissed ✓ (click #$counterClicks$load)")
+        }
+        if (!shown) {
+            // A non-show click: don't request anything — the next gated-in click loads on demand.
+            val nextShowAt = ((counterClicks - 1) / 4 + 1) * 4 + 1
+            setStatus("Click #$counterClicks — next ad at click #$nextShowAt")
         }
     }
 
@@ -316,7 +409,46 @@ class MainActivity : AppCompatActivity() {
         status.text = "Status: $text"
     }
 
+    /** Rebuilds the bottom stats table from the app-wide show-rate tracker (main-thread safe). */
+    private fun refreshStats() {
+        statsTable.post {
+            statsTable.removeAllViews()
+            statsTable.addView(statsRow(ShowRateTracker.COLUMNS, header = true))
+            val rows = SampleApp.showRate.snapshot()
+            if (rows.isEmpty()) {
+                statsTable.addView(statsRow(listOf("no ad events yet"), header = false))
+            } else {
+                rows.forEach { statsTable.addView(statsRow(it.cells(), header = false)) }
+            }
+        }
+    }
+
+    /** Builds one table row; FORMAT column is left-aligned, the rest right-aligned (see COLUMNS). */
+    private fun statsRow(cells: List<String>, header: Boolean): TableRow = TableRow(this).apply {
+        cells.forEachIndexed { i, text ->
+            addView(
+                TextView(this@MainActivity).apply {
+                    this.text = text
+                    typeface = Typeface.MONOSPACE
+                    setTypeface(typeface, if (header) Typeface.BOLD else Typeface.NORMAL)
+                    textSize = 12f
+                    setTextColor(if (header) Color.parseColor("#111111") else Color.parseColor("#333333"))
+                    val leftAligned = i < ShowRateTracker.LEFT_ALIGNED.size && ShowRateTracker.LEFT_ALIGNED[i]
+                    gravity = if (leftAligned) Gravity.START else Gravity.END
+                    setPadding(dp(10), dp(4), dp(10), dp(4))
+                    layoutParams = TableRow.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                },
+            )
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
     override fun onDestroy() {
+        NextGenAds.unregisterEventListener(statsListener)
         nativeAdView.destroy()
         super.onDestroy()
     }

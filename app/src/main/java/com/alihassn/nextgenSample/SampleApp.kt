@@ -4,7 +4,6 @@ import android.app.Application
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAdManager
 import com.alihassan.nextgenads.events.ShowRateTracker
-import com.alihassan.nextgenads.nativead.NativeAdHelper
 
 /**
  * Installs the app-open auto-show manager once for the whole process. The manager keeps an
@@ -26,12 +25,16 @@ class SampleApp : Application() {
         // Live fill/show-rate measurement — long-press the status text to dump the report.
         NextGenAds.registerEventListener(showRate)
 
-        // Warm the native cache as soon as the SDK is ready, and again on network recovery — the
-        // biggest lever on show-rate. registerWarmUp runs the task on init completion and whenever
-        // connectivity returns after a drop.
-        NextGenAds.registerWarmUp { NativeAdHelper.preload(NATIVE_UNIT, count = 2) }
+        // Reset the request breaker when connectivity returns so a button-triggered load that failed
+        // on a dead connection can be retried. No ad is requested here — nothing is preloaded until a
+        // button asks for it (no warm-up is registered), so nothing loads on startup / after consent.
         NextGenAds.enableConnectivityRecovery(this)
 
+        // Auto-show an app-open ad ONLY on a genuine return to the foreground (app was actually
+        // backgrounded). It requests on demand at that moment — never at startup and never a "next"
+        // ad after showing one. Screens can opt out via HideAppOpenAd or skipOn(...), e.g.:
+        //   AppOpenAdManager.install(this, APP_OPEN_UNIT)
+        //       .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
     }
 

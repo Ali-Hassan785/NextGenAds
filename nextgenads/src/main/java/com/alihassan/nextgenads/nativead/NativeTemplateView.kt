@@ -147,10 +147,36 @@ class NativeTemplateView @JvmOverloads constructor(
             }
         }
 
+        // Collapsible template control: the down-arrow collapses the media. Wired up before
+        // registerNativeAd and deliberately NOT registered as an ad asset, so tapping it controls
+        // the card instead of opening the ad. Other templates don't contain this view, so the
+        // lookup is null and skipped.
+        bindCollapsibleControls(adView, media)
+
         // Attaches the ad to the NativeAdView and starts impression / click tracking. The media
         // view is optional — compact templates (small, banner) pass null and show no media, which
         // is policy-compliant, while still tracking the registered icon / headline / CTA assets.
         adView.registerNativeAd(ad, media)
+    }
+
+    /**
+     * Wires the collapse (down-arrow) control used by [NativeTemplate.COLLAPSIBLE]. Tapping the
+     * arrow collapses the placement: it hides [media] and then removes the arrow itself, leaving a
+     * compact ad. No-ops on templates that lack the control.
+     */
+    private fun bindCollapsibleControls(adView: NativeAdView, media: MediaView?) {
+        val collapse = adView.findViewById<ImageView?>(R.id.ngad_collapse)
+
+        if (collapse != null && media != null) {
+            // Reset to the expanded state on every (re)bind, since the view may be recycled.
+            media.visibility = View.VISIBLE
+            collapse.visibility = View.VISIBLE
+            collapse.setOnClickListener {
+                // One-way collapse: hide the media, then drop the control that manages it.
+                media.visibility = View.GONE
+                collapse.visibility = View.GONE
+            }
+        }
     }
 
 

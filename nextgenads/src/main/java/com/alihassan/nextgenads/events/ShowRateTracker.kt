@@ -1,5 +1,6 @@
 package com.alihassan.nextgenads.events
 
+import android.os.SystemClock
 import android.util.Log
 import com.alihassan.nextgenads.NextGenAds
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
@@ -41,6 +42,14 @@ class ShowRateTracker @JvmOverloads constructor(
         var shown = 0
         var impressions = 0
         var clicked = 0
+        // Load-time timing: measured from the most recent request to its load.
+        var lastRequestElapsed = 0L
+        var lastLoadMs = 0L
+        var totalLoadMs = 0L
+        var timedLoads = 0
+
+        /** Average load time (ms) across timed loads, or -1 when nothing has loaded yet. */
+        val avgLoadMs: Long get() = if (timedLoads > 0) totalLoadMs / timedLoads else -1L
     }
 
     private val stats = EnumMap<AdFormat, Counters>(AdFormat::class.java)
@@ -48,12 +57,21 @@ class ShowRateTracker @JvmOverloads constructor(
     private fun counters(format: AdFormat): Counters = stats.getOrPut(format) { Counters() }
 
     override fun onAdRequested(format: AdFormat, adUnitId: String) {
-        counters(format).requested++
+        val c = counters(format)
+        c.requested++
+        c.lastRequestElapsed = SystemClock.elapsedRealtime()
         logLine(format)
     }
 
     override fun onAdLoaded(format: AdFormat, adUnitId: String) {
-        counters(format).loaded++
+        val c = counters(format)
+        c.loaded++
+        if (c.lastRequestElapsed > 0L) {
+            val ms = SystemClock.elapsedRealtime() - c.lastRequestElapsed
+            c.lastLoadMs = ms
+            c.totalLoadMs += ms
+            c.timedLoads++
+        }
         logLine(format)
     }
 
@@ -86,28 +104,61 @@ class ShowRateTracker @JvmOverloads constructor(
     fun summaryFor(format: AdFormat): String {
         val c = counters(format)
         return "$format req=${c.requested} load=${c.loaded} fail=${c.failed} " +
-            "imp=${c.impressions} fill=${pct(c.loaded, c.requested)} use=${pct(c.impressions, c.loaded)}"
+            "imp=${c.impressions} fill=${pct(c.loaded, c.requested)} use=${pct(c.impressions, c.loaded)} " +
+            "avg=${c.avgLoadMs.takeIf { it >= 0 }?.let { "${it}ms" } ?: "—"}"
     }
 
-    /** Multi-line report across every format seen so far. */
-    fun report(): String {
-        if (stats.isEmpty()) return "ShowRateTracker: no ad events yet"
-        val sb = StringBuilder("── Ad show-rate report ──\n")
-        sb.append(
-            "%-22s %4s %4s %4s %5s %5s %5s %5s\n".format(
-                "FORMAT", "REQ", "LOAD", "FAIL", "SHOW", "IMP", "FILL", "USE",
-            ),
+    /**
+     * Immutable per-format rows for building a real table (e.g. an Android `TableLayout`) instead of
+     * parsing [report]'s text. One entry per format seen so far, in insertion order.
+     */
+    fun snapshot(): List<FormatRow> = stats.map { (format, c) ->
+        FormatRow(
+            format = format.name,
+            requested = c.requested,
+            loaded = c.loaded,
+            failed = c.failed,
+            shown = c.shown,
+            impressions = c.impressions,
+            fillPct = pct(c.loaded, c.requested),
+            usePct = pct(c.impressions, c.loaded),
+            avgLoadMs = c.avgLoadMs,
         )
-        for ((format, c) in stats) {
-            sb.append(
-                "%-22s %4d %4d %4d %5d %5d %5s %5s\n".format(
-                    format.name, c.requested, c.loaded, c.failed, c.shown, c.impressions,
-                    pct(c.loaded, c.requested), pct(c.impressions, c.loaded),
-                ),
-            )
+    }
+
+    /**
+     * Multi-line report across every format seen so far, rendered as a bordered box-drawing table
+     * that stays aligned in any monospace view (logcat, …). For an on-screen widget prefer
+     * [snapshot] with a real `TableLayout`.
+     */
+    fun report(): String {
+        val rows = snapshot()
+        if (rows.isEmpty()) return "Ad show-rate report\n(no ad events yet)"
+
+        val body = rows.map { it.cells() }
+        // Column width = widest cell (header or any row), plus one space of padding on each side.
+        val widths = IntArray(COLUMNS.size) { col ->
+            (body.map { it[col].length } + COLUMNS[col].length).maxOrNull()!! + 2
         }
-        sb.append("fill% = loaded/requested · use% = impressions/loaded (shown ÷ loaded inventory)")
-        return sb.toString()
+
+        fun rule(left: String, mid: String, right: String): String =
+            widths.joinToString(mid, prefix = left, postfix = right) { "─".repeat(it) }
+
+        fun row(cells: List<String>): String =
+            cells.mapIndexed { i, cell ->
+                val pad = widths[i] - cell.length - 1
+                if (LEFT_ALIGNED[i]) " $cell${" ".repeat(pad)}" else "${" ".repeat(pad)}$cell "
+            }.joinToString("│", prefix = "│", postfix = "│")
+
+        return buildString {
+            append("Ad show-rate report\n")
+            append(rule("┌", "┬", "┐")).append('\n')
+            append(row(COLUMNS)).append('\n')
+            append(rule("├", "┼", "┤")).append('\n')
+            body.forEach { append(row(it)).append('\n') }
+            append(rule("└", "┴", "┘")).append('\n')
+            append("fill% = loaded/requested · use% = impressions/loaded · avg ms = mean load time")
+        }
     }
 
     /** Logs [report] to logcat under the [NextGenAds.TAG] tag. */
@@ -119,4 +170,44 @@ class ShowRateTracker @JvmOverloads constructor(
 
     private fun pct(part: Int, whole: Int): String =
         if (whole <= 0) "—" else "${(part * 100) / whole}%"
+
+    /**
+     * One format's row of the report. [cells] returns the display strings in [COLUMNS] order, so a
+     * `TableLayout` can add a header row from [COLUMNS] and a data row from each snapshot entry's
+     * cells without knowing the column layout.
+     */
+    data class FormatRow(
+        val format: String,
+        val requested: Int,
+        val loaded: Int,
+        val failed: Int,
+        val shown: Int,
+        val impressions: Int,
+        val fillPct: String,
+        val usePct: String,
+        /** Mean load time in ms across timed loads, or -1 if nothing has loaded. */
+        val avgLoadMs: Long,
+    ) {
+        fun cells(): List<String> = listOf(
+            format,
+            requested.toString(),
+            loaded.toString(),
+            failed.toString(),
+            shown.toString(),
+            impressions.toString(),
+            fillPct,
+            usePct,
+            if (avgLoadMs >= 0) "$avgLoadMs" else "—",
+        )
+    }
+
+    companion object {
+        /** Column headers in cell order — shared by [report] and [snapshot]/[FormatRow.cells]. */
+        @JvmField
+        val COLUMNS = listOf("FORMAT", "REQ", "LOAD", "FAIL", "SHOW", "IMP", "FILL", "USE", "AVG ms")
+
+        /** Per-column alignment: FORMAT left, everything else right. */
+        @JvmField
+        val LEFT_ALIGNED = booleanArrayOf(true, false, false, false, false, false, false, false, false)
+    }
 }
