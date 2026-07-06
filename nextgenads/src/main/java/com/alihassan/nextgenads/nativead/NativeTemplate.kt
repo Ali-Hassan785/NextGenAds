@@ -11,8 +11,8 @@ import com.alihassan.nextgenads.R
  * - [LARGE]       – media-forward card for full-width slots / dialogs.
  * - [BANNER]      – single-line strip that mimics a banner footer.
  * - [MEDIA_LEFT]  – media on the left, headline + body top-right, CTA bottom-right.
- * - [COLLAPSIBLE] – media on top with a down-arrow that collapses the media and a close button that
- *   dismisses the whole placement.
+ * - [COLLAPSIBLE] – media on top with a down-arrow control that collapses the media, leaving a
+ *   compact ad.
  */
 enum class NativeTemplate(
     @field:LayoutRes @get:LayoutRes val layout: Int,

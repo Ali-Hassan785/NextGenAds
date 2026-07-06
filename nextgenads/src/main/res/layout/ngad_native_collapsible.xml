@@ -51,11 +51,14 @@
                 android:textColor="@color/ngad_body"
                 android:textSize="12sp" />
 
+            <!-- marginEnd clears the NativeAdView's top-right corner, where the SDK renders the
+                 AdChoices icon — the two controls must never overlap (policy + misclicks). -->
             <ImageView
                 android:id="@+id/ngad_collapse"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:layout_marginStart="4dp"
+                android:layout_marginEnd="18dp"
                 android:background="@drawable/ngad_bg_control"
                 android:contentDescription="@string/ngad_collapse_desc"
                 android:padding="4dp"

@@ -1,7 +1,9 @@
+# The Gradle daemon is pinned to Java 21 (gradle/gradle-daemon-jvm.properties), so the build
+# machine must have a JDK 21 available.
 jdk:
-  - openjdk17
+  - openjdk21
 before_install:
-  - sdk install java 17.0.10-open
-  - sdk use java 17.0.10-open
+  - sdk install java 21.0.5-open
+  - sdk use java 21.0.5-open
 install:
   - ./gradlew :nextgenads:publishReleasePublicationToMavenLocal

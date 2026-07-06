@@ -9,6 +9,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
@@ -22,9 +24,10 @@ import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEv
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Loads and shows a single interstitial ad unit (Next-Gen SDK) with automatic preloading and
- * exponential-backoff retries — tuned for a high show-rate: a fresh ad is requested immediately
- * after each dismissal.
+ * Loads and shows a single interstitial ad unit (Next-Gen SDK) with automatic preloading,
+ * exponential-backoff retries and cache expiry — tuned for a high show-rate. Set [autoReload] to
+ * `true` to request a fresh ad automatically after each dismissal, or warm the next one yourself
+ * via [load] / [Interstitials.preload].
  *
  * Prefer obtaining instances through [Interstitials.get] so the same cached ad is reused across
  * screens. Requires [NextGenAds.initialize] to have completed first.
@@ -33,7 +36,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
 
     private val handler = Handler(Looper.getMainLooper())
     private var interstitialAd: InterstitialAd? = null
+    private var loadedAtElapsed = 0L
     private var loading = false
+    private var showing = false
     private var retryCount = 0
     private var lastShownElapsed = 0L
     private var loadStartElapsed = 0L
@@ -44,6 +49,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
 
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
+
+    /**
+     * How long (ms) a loaded interstitial stays valid in the cache. AdMob interstitials expire
+     * roughly an hour after loading; showing a stale ad fails with an "ad expired" error and the
+     * show is silently lost. The helper drops (and, on the next [load], replaces) any cached ad
+     * older than this, so a show request never burns on a stale ad.
+     */
+    var adValidityMs = 55 * 60 * 1000L
 
     /**
      * When `true`, the helper automatically requests the next ad after one is shown/dismissed (and
@@ -62,26 +75,46 @@ class InterstitialAdHelper(private val adUnitId: String) {
      */
     var loadingOverlayMs = 1000L
 
+    /** A non-expired ad is cached and ready to show. */
     val isReady: Boolean
-        get() = interstitialAd != null
+        get() = interstitialAd != null && !isExpired
+
+    /** `true` while this helper's interstitial is on screen (or committed to showing). */
+    val isShowing: Boolean
+        get() = showing
+
+    private val isExpired: Boolean
+        get() = SystemClock.elapsedRealtime() - loadedAtElapsed >= adValidityMs
+
+    /** Drops a cached ad that has outlived [adValidityMs] so it is never offered to [show]. */
+    private fun evictIfExpired() {
+        if (interstitialAd != null && isExpired) {
+            NextGenAds.log("Interstitial expired after ${adValidityMs / 60_000}min, dropping: $adUnitId")
+            interstitialAd = null
+        }
+    }
 
     /** Wall-clock time (ms) the most recent successful load took, or `-1` if none has loaded yet. */
     var lastLoadMs: Long = -1L
         private set
 
-    /** Preloads the ad if not already available / in flight. */
+    /**
+     * Preloads the ad if not already available / in flight. Safe to call from any thread; state is
+     * mutated (and [onResult] delivered) on the main thread.
+     */
     @JvmOverloads
-    fun load(onResult: ((Boolean) -> Unit)? = null) {
+    fun load(onResult: ((Boolean) -> Unit)? = null) = NextGenAds.runOnMain {
         if (!NextGenAds.canRequest()) {
             onResult?.invoke(false)
-            return
+            return@runOnMain
         }
+        evictIfExpired()
         if (interstitialAd != null) {
             onResult?.invoke(true)
-            return
+            return@runOnMain
         }
         onResult?.let { pending.add(it) }
-        if (loading) return // a load is already in flight; this caller is parked in `pending`
+        if (loading) return@runOnMain // a load is already in flight; this caller is parked in `pending`
         loading = true
         // Defer the request until the SDK is ready so preloads issued during app start are queued
         // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
@@ -103,6 +136,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     NextGenAds.runOnMain {
                         interstitialAd = ad
+                        loadedAtElapsed = SystemClock.elapsedRealtime()
                         loading = false
                         retryCount = 0
                         val loadMs = SystemClock.elapsedRealtime() - loadStartElapsed
@@ -116,18 +150,29 @@ class InterstitialAdHelper(private val adUnitId: String) {
                 override fun onAdFailedToLoad(adError: LoadAdError) {
                     NextGenAds.runOnMain {
                         interstitialAd = null
-                        loading = false
                         val loadMs = SystemClock.elapsedRealtime() - loadStartElapsed
                         NextGenAds.log("Interstitial failed ($adUnitId) after ${loadMs}ms: $adError")
                         NextGenAds.dispatchFailedToLoad(AdFormat.INTERSTITIAL, adUnitId, adError)
                         if (retryCount < maxRetries && !NextGenAds.isRequestPaused()) {
+                            // Keep `loading` true and the waiters parked: the load isn't over until
+                            // the retry budget is spent. Settling them now would make loadAndShow
+                            // give up seconds before the retry succeeds — a lost show.
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
-                            handler.postDelayed({ load() }, delayMs)
+                            handler.postDelayed({
+                                if (NextGenAds.canRequest()) {
+                                    requestAd()
+                                } else { // breaker tripped / ads disabled during the backoff wait
+                                    loading = false
+                                    retryCount = 0
+                                    flushPending(false)
+                                }
+                            }, delayMs)
                         } else {
+                            loading = false
                             retryCount = 0 // reset budget so a later load() can retry afresh
+                            flushPending(false)
                         }
-                        flushPending(false)
                     }
                 }
             },
@@ -152,7 +197,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
             onDismiss()
             return
         }
-        if (interstitialAd != null) {
+        if (isReady) {
             show(activity, onDismiss)
             return
         }
@@ -170,12 +215,19 @@ class InterstitialAdHelper(private val adUnitId: String) {
             if (settled) return@load // timeout already let the caller proceed
             settled = true
             handler.removeCallbacks(timeoutRunnable)
-            if (loaded && interstitialAd != null) show(activity, onDismiss) else onDismiss()
+            // The activity may have died while the load was in flight — keep the ad cached for the
+            // next trigger instead of burning it on a show that cannot render.
+            if (loaded && interstitialAd != null && !activity.isFinishing && !activity.isDestroyed) {
+                show(activity, onDismiss)
+            } else {
+                onDismiss()
+            }
         }
     }
 
     /**
-     * Shows the ad if one is ready and the frequency cap allows it, then preloads the next one.
+     * Shows the ad if one is ready, the frequency cap allows it and no other full-screen ad is on
+     * screen, then preloads the next one. Must be called on the main thread.
      *
      * @return `true` if the ad is being shown. When `false`, [onDismiss] has already been invoked
      *   synchronously so the caller can proceed immediately (no ad was available).
@@ -185,6 +237,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
             onDismiss()
             return false
         }
+        evictIfExpired()
         val ad = interstitialAd
         val now = SystemClock.elapsedRealtime()
         val capped = minIntervalMs > 0 && lastShownElapsed > 0 && now - lastShownElapsed < minIntervalMs
@@ -193,11 +246,29 @@ class InterstitialAdHelper(private val adUnitId: String) {
             if (autoReload) load() // opt-in: make the next attempt have an ad ready
             return false
         }
+        if (showing || !NextGenAds.tryBeginFullScreenShow()) {
+            // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
+            NextGenAds.log("Interstitial show skipped ($adUnitId): a full-screen ad is already showing")
+            onDismiss()
+            return false
+        }
+        // Committed: take ownership of the cached ad so a concurrent show()/load() can't reuse it
+        // (its event callback is now bound to this caller's onDismiss).
+        showing = true
+        interstitialAd = null
 
         var overlay: View? = null
         fun dismissOverlay() {
             overlay?.let { removeLoadingOverlay(it) }
             overlay = null
+        }
+
+        // The show never happened (activity/app went away first): put the ad back for the next
+        // trigger and free the full-screen slot.
+        fun abortShow() {
+            showing = false
+            interstitialAd = ad
+            NextGenAds.endFullScreenShow()
         }
 
         ad.adEventCallback = object : InterstitialAdEventCallback {
@@ -210,7 +281,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
                     dismissOverlay()
-                    interstitialAd = null
+                    showing = false
+                    NextGenAds.endFullScreenShow()
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.INTERSTITIAL, adUnitId)
@@ -221,7 +293,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
             override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
                 NextGenAds.runOnMain {
                     dismissOverlay()
-                    interstitialAd = null
+                    showing = false
+                    NextGenAds.endFullScreenShow()
                     NextGenAds.log("Interstitial show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.INTERSTITIAL, adUnitId, fullScreenContentError)
                     if (autoReload) load()
@@ -254,9 +327,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
         // the underlying screen never shows through.
         overlay = showLoadingOverlay(activity)
         handler.postDelayed({
-            if (activity.isFinishing || activity.isDestroyed) {
+            val appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
+                .isAtLeast(Lifecycle.State.STARTED)
+            if (activity.isFinishing || activity.isDestroyed || !appInForeground) {
+                // The user left (home button / activity died) during the interlude — showing now
+                // would pop an ad at an unexpected moment. Keep it cached for the next trigger.
                 dismissOverlay()
-                onDismiss() // ad stays cached for the next trigger
+                abortShow()
+                onDismiss()
                 return@postDelayed
             }
             ad.show(activity)
@@ -311,7 +389,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         timeoutMs: Long,
         onDismiss: () -> Unit,
     ): Boolean {
-        if (forceLoad && interstitialAd == null) {
+        if (forceLoad && !isReady) {
             loadAndShow(activity, timeoutMs, onDismiss)
             return true
         }

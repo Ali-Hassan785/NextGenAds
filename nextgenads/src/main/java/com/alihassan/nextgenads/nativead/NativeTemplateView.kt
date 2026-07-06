@@ -16,7 +16,7 @@ import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
 
 /**
- * A self-contained view that renders a Next-Gen [NativeAd] using one of the four built-in
+ * A self-contained view that renders a Next-Gen [NativeAd] using one of the six built-in
  * [NativeTemplate]s and shows a shimmer placeholder until an ad is bound.
  *
  * Set the template from XML with `app:ngad_template="medium"`, or in code via [setTemplate].
@@ -94,7 +94,13 @@ class NativeTemplateView @JvmOverloads constructor(
 
     /** Binds [ad] to the current template and reveals it. */
     fun setNativeAd(ad: NativeAd) {
-        val adView = nativeAdView ?: return
+        val adView = nativeAdView
+        if (adView == null) {
+            // The view was destroy()ed while this ad was still in flight (e.g. a populate() waiter
+            // landing after the host screen closed) — release the ad instead of leaking it.
+            ad.destroy()
+            return
+        }
         boundAd?.destroy()
         boundAd = ad
         bind(adView, ad)
@@ -183,6 +189,7 @@ class NativeTemplateView @JvmOverloads constructor(
     /** Releases the bound ad and stops the shimmer. Call from the host's `onDestroy`. */
     fun destroy() {
         shimmerContainer?.stopShimmer()
+        shimmerContainer = null
         boundAd?.destroy()
         boundAd = null
         nativeAdView = null

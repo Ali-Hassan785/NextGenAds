@@ -45,6 +45,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
     private var showing = false
     private var retryCount = 0
     private var lastShownElapsed = 0L
+    // Callbacks waiting on the single in-flight load. Concurrent load() callers all get notified,
+    // instead of every caller-after-the-first being silently dropped (which would leave a splash
+    // gate's loadAndShow waiting forever).
+    private val pending = mutableListOf<(Boolean) -> Unit>()
 
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
@@ -72,25 +76,36 @@ class AppOpenAdHelper(private val adUnitId: String) {
     private val isExpired: Boolean
         get() = SystemClock.elapsedRealtime() - loadElapsed >= AD_VALIDITY_MS
 
-    /** Preloads the ad if not already available / in flight. */
+    /**
+     * Preloads the ad if not already available / in flight. Safe to call from any thread; state is
+     * mutated (and [onResult] delivered) on the main thread. Concurrent callers while one load is
+     * in flight are parked and all notified with that load's result.
+     */
     @JvmOverloads
-    fun load(onResult: ((Boolean) -> Unit)? = null) {
+    fun load(onResult: ((Boolean) -> Unit)? = null) = NextGenAds.runOnMain {
         if (!NextGenAds.canRequest()) {
             onResult?.invoke(false)
-            return
+            return@runOnMain
         }
         if (isReady) {
             onResult?.invoke(true)
-            return
+            return@runOnMain
         }
-        if (loading) return
+        onResult?.let { pending.add(it) }
+        if (loading) return@runOnMain // a load is already in flight; this caller is parked in `pending`
         loading = true
         // Defer the request until the SDK is ready so preloads issued during app start are queued
         // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
-        NextGenAds.whenInitialized { requestAd(onResult) }
+        NextGenAds.whenInitialized { requestAd() }
     }
 
-    private fun requestAd(onResult: ((Boolean) -> Unit)?) {
+    private fun flushPending(loaded: Boolean) {
+        val waiters = pending.toList()
+        pending.clear()
+        waiters.forEach { it(loaded) }
+    }
+
+    private fun requestAd() {
         NextGenAds.countRequest(AdFormat.APP_OPEN, adUnitId)
         AppOpenAd.load(
             AdRequest.Builder(adUnitId).build(),
@@ -103,22 +118,35 @@ class AppOpenAdHelper(private val adUnitId: String) {
                         retryCount = 0
                         NextGenAds.log("AppOpen loaded: $adUnitId")
                         NextGenAds.dispatchLoaded(AdFormat.APP_OPEN, adUnitId)
-                        onResult?.invoke(true)
+                        flushPending(true)
                     }
                 }
 
                 override fun onAdFailedToLoad(adError: LoadAdError) {
                     NextGenAds.runOnMain {
                         appOpenAd = null
-                        loading = false
                         NextGenAds.log("AppOpen failed ($adUnitId): $adError")
                         NextGenAds.dispatchFailedToLoad(AdFormat.APP_OPEN, adUnitId, adError)
-                        if (retryCount < maxRetries) {
+                        if (retryCount < maxRetries && !NextGenAds.isRequestPaused()) {
+                            // Keep `loading` true and the waiters parked: the load isn't over until
+                            // the retry budget is spent. Settling them now would make loadAndShow
+                            // give up seconds before the retry succeeds — a lost show.
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
-                            handler.postDelayed({ load() }, delayMs)
+                            handler.postDelayed({
+                                if (NextGenAds.canRequest()) {
+                                    requestAd()
+                                } else { // breaker tripped / ads disabled during the backoff wait
+                                    loading = false
+                                    retryCount = 0
+                                    flushPending(false)
+                                }
+                            }, delayMs)
+                        } else {
+                            loading = false
+                            retryCount = 0 // reset budget so a later load() can retry afresh
+                            flushPending(false)
                         }
-                        onResult?.invoke(false)
                     }
                 }
             },
@@ -165,7 +193,13 @@ class AppOpenAdHelper(private val adUnitId: String) {
             if (settled) return@load // timeout already let the caller proceed
             settled = true
             handler.removeCallbacks(timeoutRunnable)
-            if (loaded && isReady) show(activity, onDismiss) else onDismiss()
+            // The activity may have died while the load was in flight — keep the ad cached for the
+            // next foreground instead of showing over a dead window.
+            if (loaded && isReady && !activity.isFinishing && !activity.isDestroyed) {
+                show(activity, onDismiss)
+            } else {
+                onDismiss()
+            }
         }
     }
 
@@ -192,8 +226,16 @@ class AppOpenAdHelper(private val adUnitId: String) {
             if (autoReload) load() // opt-in: make the next attempt have a fresh ad ready
             return false
         }
+        if (!NextGenAds.tryBeginFullScreenShow()) {
+            // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
+            NextGenAds.log("AppOpen show skipped ($adUnitId): a full-screen ad is already showing")
+            onDismiss()
+            return false
+        }
 
+        // Committed: take ownership so a concurrent show()/load() can't grab the same ad.
         showing = true
+        appOpenAd = null
         ad.adEventCallback = object : AppOpenAdEventCallback {
             override fun onAdShowedFullScreenContent() {
                 NextGenAds.log("AppOpen shown: $adUnitId")
@@ -202,8 +244,8 @@ class AppOpenAdHelper(private val adUnitId: String) {
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
-                    appOpenAd = null
                     showing = false
+                    NextGenAds.endFullScreenShow()
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.APP_OPEN, adUnitId)
@@ -213,8 +255,8 @@ class AppOpenAdHelper(private val adUnitId: String) {
 
             override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
                 NextGenAds.runOnMain {
-                    appOpenAd = null
                     showing = false
+                    NextGenAds.endFullScreenShow()
                     NextGenAds.log("AppOpen show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.APP_OPEN, adUnitId, fullScreenContentError)
                     if (autoReload) load()
@@ -262,8 +304,8 @@ object AppOpenAds {
     @JvmStatic
     @JvmOverloads
     fun loadAndShow(
-        adUnitId: String,
         activity: Activity,
+        adUnitId: String,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
     ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
@@ -292,12 +334,12 @@ interface HideAppOpenAd
  *     .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
  * ```
  *
- * **When it requests:** only on a genuine background→foreground transition, and only on demand at
- * that moment (via the helper's `loadAndShow`). It does **not** request on install / cold start, and
- * it does **not** pre-warm a "next" ad after showing one — so no ad is ever requested before the app
- * has actually been backgrounded, and a request made on return is always coupled to a show (it waits
- * for the load; see [loadTimeoutMs]). The trade-off is that the ad loads at the moment of return
- * rather than being instantly ready.
+ * **When it requests and shows:** on a genuine background→foreground transition an already-loaded
+ * (non-expired) ad shows immediately. Otherwise a load starts at that moment and the ad is shown
+ * only if it lands within [loadTimeoutMs] **and** the app is still in the foreground on an allowed
+ * activity — an ad that arrives later is never popped over app content mid-session (policy-safe);
+ * it stays cached so the *next* return shows instantly. It does **not** request on install / cold
+ * start.
  *
  * The first foreground of a cold start is skipped by default ([showOnColdStart]) since it isn't a
  * return-from-background. Set [enabled] to `false` to pause auto-showing (e.g. while a different
@@ -354,25 +396,34 @@ class AppOpenAdManager private constructor(
             activity.javaClass.name.startsWith("com.google.android.gms.ads")
 
     /**
-     * Upper bound (ms) on the on-foreground load before proceeding without showing. Default `0`
-     * waits for the load result (itself bounded by the helper's retry budget) so a request made on
-     * return actually results in a show — a positive value risks requesting an ad that then times
-     * out unshown. Set a bound only if you'd rather skip the ad than wait on a slow network.
+     * The window (ms) after a foreground transition during which a just-requested ad may still be
+     * shown. An ad that loads after the window (slow network) is **not** shown mid-session — that
+     * would pop a full-screen ad at an unexpected moment — but stays cached so the next return
+     * shows it instantly. `0` never shows a late-loading ad: the on-return request only warms the
+     * cache for the next return.
      */
     @Volatile
-    var loadTimeoutMs = 0L
+    var loadTimeoutMs = 5_000L
+
+    /**
+     * Bumped every foreground/background transition; a pending show-on-load from a previous
+     * foreground session is invalidated by comparing its captured epoch. Main thread only.
+     */
+    private var foregroundEpoch = 0
 
     init {
         application.registerActivityLifecycleCallbacks(this)
-        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        // Lifecycle.addObserver enforces the main thread — marshal so install() is thread-agnostic.
+        NextGenAds.runOnMain { ProcessLifecycleOwner.get().lifecycle.addObserver(this) }
         // No load here: nothing is requested until the app genuinely returns from the background.
     }
 
     /** Called by [ProcessLifecycleOwner] when the app enters the foreground. */
     override fun onStart(owner: LifecycleOwner) {
+        foregroundEpoch++
         val wasCold = coldStart
         coldStart = false
-        if (!enabled) return
+        if (!enabled || !NextGenAds.canShowAds()) return
         // The first foreground of a cold start is NOT a return-from-background — request nothing.
         if (wasCold && !showOnColdStart) return
         val activity = currentActivity.get() ?: return
@@ -380,10 +431,34 @@ class AppOpenAdManager private constructor(
             NextGenAds.log("AppOpen skipped on ${activity.javaClass.simpleName}")
             return
         }
-        // Genuine background→foreground: request and show on demand. No pre-warm and no post-show
-        // reload (autoReload stays off), so a request only ever happens here — at the moment of a
-        // real return — and never for a "next" ad after one is shown.
-        helper.loadAndShow(activity, loadTimeoutMs)
+
+        // Cached ad ready: the ideal path — show instantly over the returning activity.
+        if (helper.isReady) {
+            helper.show(activity)
+            return
+        }
+
+        // Nothing cached: request now, but only show if the ad lands inside the show window while
+        // the app is still foregrounded on an allowed activity. A late ad stays cached for the next
+        // return instead of popping over app content mid-session.
+        val epoch = foregroundEpoch
+        val deadline = SystemClock.elapsedRealtime() + loadTimeoutMs
+        helper.load { loaded ->
+            if (!loaded || !enabled) return@load
+            if (epoch != foregroundEpoch) return@load // app was backgrounded (or re-foregrounded) since
+            if (loadTimeoutMs <= 0L || SystemClock.elapsedRealtime() > deadline) {
+                NextGenAds.log("AppOpen loaded after the show window — cached for the next return")
+                return@load
+            }
+            val current = currentActivity.get() ?: return@load
+            if (current.isFinishing || current.isDestroyed || isSkipped(current)) return@load
+            helper.show(current)
+        }
+    }
+
+    /** Called by [ProcessLifecycleOwner] when the app leaves the foreground. */
+    override fun onStop(owner: LifecycleOwner) {
+        foregroundEpoch++ // invalidate any pending show-on-load from this session
     }
 
     override fun onActivityResumed(activity: Activity) {

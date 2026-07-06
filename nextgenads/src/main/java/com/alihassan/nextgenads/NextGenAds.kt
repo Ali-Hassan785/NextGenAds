@@ -54,12 +54,37 @@ object NextGenAds {
      * Optional dynamic premium check (e.g. read your billing repository). Evaluated on every ad
      * request; if it returns `true`, ads are suppressed. Defaults to always-false.
      */
+    @Volatile
     @JvmStatic
     var premiumProvider: () -> Boolean = { false }
 
     /** Single gate every helper consults: ads are allowed only when enabled and not premium. */
     @JvmStatic
     fun canShowAds(): Boolean = enabled && !premium && !premiumProvider()
+
+    // ---------------------------------------------------------------------------------------------
+    // Full-screen exclusivity gate
+    //
+    // Only one full-screen ad (interstitial / rewarded / rewarded-interstitial / app-open) may be
+    // on screen at a time — stacking them is an AdMob policy violation and loses the covered ad's
+    // impression. Helpers acquire the gate when they commit to showing and release it when the ad
+    // is dismissed or fails to show; while held, every other full-screen show() is refused (the
+    // refused helper keeps its ad cached for the next trigger).
+    // ---------------------------------------------------------------------------------------------
+
+    private val fullScreenShowing = AtomicBoolean(false)
+
+    /** `true` while any full-screen ad from this library is on screen (or committed to showing). */
+    @JvmStatic
+    fun isFullScreenAdShowing(): Boolean = fullScreenShowing.get()
+
+    /** Atomically claims the full-screen slot. Returns `false` when another ad already holds it. */
+    internal fun tryBeginFullScreenShow(): Boolean = fullScreenShowing.compareAndSet(false, true)
+
+    /** Releases the full-screen slot (on dismiss / failed-to-show / aborted show). */
+    internal fun endFullScreenShow() {
+        fullScreenShowing.set(false)
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Request circuit breaker
@@ -86,12 +111,23 @@ object NextGenAds {
         (cooldownUntilElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
 
     /**
+     * Optional consent gate consulted by [canRequest]. The library's
+     * `consent.ConsentManager` wires this automatically to UMP's `canRequestAds`, so apps using it
+     * can never fire a pre-consent ad request (GDPR). `null` (default) applies no consent gating —
+     * for apps that manage consent entirely outside this library.
+     */
+    @Volatile
+    @JvmStatic
+    var consentProvider: (() -> Boolean)? = null
+
+    /**
      * The gate every **request** site consults: a new ad may be requested only when ads are allowed
-     * ([canShowAds]) and the breaker isn't in cooldown. Use [canShowAds] (not this) to gate showing
-     * an already-loaded ad.
+     * ([canShowAds]), consent permits requests (when a [consentProvider] is wired), and the breaker
+     * isn't in cooldown. Use [canShowAds] (not this) to gate showing an already-loaded ad.
      */
     @JvmStatic
-    fun canRequest(): Boolean = canShowAds() && !isRequestPaused()
+    fun canRequest(): Boolean =
+        canShowAds() && consentProvider?.invoke() != false && !isRequestPaused()
 
     /** Manually clears the cooldown and failure count (e.g. when connectivity is restored). */
     @JvmStatic
@@ -106,7 +142,12 @@ object NextGenAds {
     }
 
     @Synchronized
-    internal fun recordRequestFailure() {
+    internal fun recordRequestFailure(error: LoadAdError) {
+        // Only connectivity-flavoured failures indicate a dead/slow link worth pausing for.
+        // NO_FILL and configuration errors must NOT trip the breaker — pausing every format for
+        // minutes because one unit had no demand would cost fill across the whole app.
+        val code = error.code
+        if (code != LoadAdError.ErrorCode.NETWORK_ERROR && code != LoadAdError.ErrorCode.TIMEOUT) return
         if (isRequestPaused()) return // already paused; don't keep counting
         consecutiveFailures++
         val max = NextGenAdsConfig.maxRequestFailures
@@ -131,8 +172,7 @@ object NextGenAds {
 
     private val warmUpTasks = CopyOnWriteArrayList<Runnable>()
 
-    @Volatile
-    private var connectivityRecoveryEnabled = false
+    private val connectivityRecoveryEnabling = AtomicBoolean(false)
 
     /**
      * Registers a preload task (e.g. `{ NativeAdHelper.preload(unit) }`) to warm the cache. Runs
@@ -170,9 +210,13 @@ object NextGenAds {
      */
     @JvmStatic
     fun enableConnectivityRecovery(context: Context) {
-        if (connectivityRecoveryEnabled) return
+        if (!connectivityRecoveryEnabling.compareAndSet(false, true)) return
         val cm = context.applicationContext
-            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null) {
+            connectivityRecoveryEnabling.set(false)
+            return
+        }
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 runOnMain {
@@ -184,8 +228,8 @@ object NextGenAds {
         }
         try {
             cm.registerDefaultNetworkCallback(callback)
-            connectivityRecoveryEnabled = true
         } catch (t: Throwable) {
+            connectivityRecoveryEnabling.set(false)
             log("Could not register connectivity recovery", t)
         }
     }
@@ -219,10 +263,18 @@ object NextGenAds {
         onComplete: Runnable? = null,
     ) {
         if (initialized) {
-            onComplete?.run()
+            // Deliver on the main thread like the normal completion path, so callers can rely on it.
+            onComplete?.let { mainHandler.post(it) }
             return
         }
         synchronized(this) {
+            // Re-check under the lock: initialization may have completed (and flushed the queue)
+            // between the volatile read above and acquiring the monitor. Without this, a racing
+            // caller could park its callback forever AND re-run MobileAds.initialize.
+            if (initialized) {
+                onComplete?.let { mainHandler.post(it) }
+                return
+            }
             onComplete?.let { pendingCallbacks.add(it) }
             if (!initializing.compareAndSet(false, true)) return
         }
@@ -237,19 +289,26 @@ object NextGenAds {
         val appContext = context.applicationContext
         // The Next-Gen SDK requires initialization off the main thread to avoid ANRs.
         Thread({
-            MobileAds.initialize(appContext, InitializationConfig.Builder(appId).build()) {
-                initialized = true
+            try {
+                MobileAds.initialize(appContext, InitializationConfig.Builder(appId).build()) {
+                    initialized = true
+                    initializing.set(false)
+                    log("GMA Next-Gen SDK initialized")
+                    val callbacks: List<Runnable>
+                    synchronized(this) {
+                        callbacks = pendingCallbacks.toList()
+                        pendingCallbacks.clear()
+                    }
+                    mainHandler.post {
+                        callbacks.forEach { it.run() }
+                        warmUp() // fire any registered preload tasks now the SDK is ready
+                    }
+                }
+            } catch (t: Throwable) {
+                // Never leave init wedged: allow a later initialize() call to try again. Queued
+                // callbacks stay parked so that retry still replays them.
                 initializing.set(false)
-                log("GMA Next-Gen SDK initialized")
-                val callbacks: List<Runnable>
-                synchronized(this) {
-                    callbacks = pendingCallbacks.toList()
-                    pendingCallbacks.clear()
-                }
-                mainHandler.post {
-                    callbacks.forEach { it.run() }
-                    warmUp() // fire any registered preload tasks now the SDK is ready
-                }
+                log("MobileAds.initialize threw — initialization aborted; call initialize() again", t)
             }
         }, "NextGenAds-init").start()
     }
@@ -330,7 +389,7 @@ object NextGenAds {
     }
 
     internal fun dispatchFailedToLoad(format: AdFormat, adUnitId: String, error: LoadAdError) {
-        recordRequestFailure()
+        recordRequestFailure(error)
         dispatch { it.onAdFailedToLoad(format, adUnitId, error) }
     }
 

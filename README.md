@@ -268,7 +268,7 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `app:ngad_ad_type` | `banner`, `nativead` | `nativead` |
-| `app:ngad_template` | `small`, `medium`, `large`, `banner`, `media_left` | `medium` |
+| `app:ngad_template` | `small`, `medium`, `large`, `banner`, `media_left`, `collapsible` | `medium` |
 
 ### 2. `NativeAdHelper` + `NativeTemplateView` (lower level)
 
@@ -286,7 +286,7 @@ NativeAdHelper.load(NATIVE_UNIT, onLoaded = { ad -> /* … */ })
 NativeAdHelper.clear(NATIVE_UNIT)   // or clear() for all units
 ```
 
-### The five templates
+### The six templates
 
 | Template | Layout |
 | --- | --- |
@@ -295,6 +295,7 @@ NativeAdHelper.clear(NATIVE_UNIT)   // or clear() for all units
 | `LARGE` | Media-forward card for full-width slots / dialogs. |
 | `BANNER` | Single-line strip that mimics a banner footer (no media). |
 | `MEDIA_LEFT` | Media on the left, headline + body top-right, CTA bottom-right. |
+| `COLLAPSIBLE` | Media on top with a down-arrow control that collapses the media into a compact ad. |
 
 All templates use rounded, clipped media, a ripple CTA, an "Ad" attribution badge, and
 high-quality Roboto typography.
@@ -314,12 +315,19 @@ Interstitials.get(INTERSTITIAL_UNIT).show(this) {
 
 // Tune behaviour:
 val helper = Interstitials.get(INTERSTITIAL_UNIT)
-helper.maxRetries = 3        // exponential backoff on load failure (1s, 2s, 4s …)
-helper.minIntervalMs = 60_000 // frequency cap; 0 disables
-val ready = helper.isReady
+helper.maxRetries = 3          // exponential backoff on load failure (1s, 2s, 4s …)
+helper.minIntervalMs = 60_000  // frequency cap; 0 disables
+helper.adValidityMs = 55 * 60_000L // cached-ad expiry; stale ads are dropped, never shown
+helper.autoReload = true       // request the next ad automatically after each dismissal
+val ready = helper.isReady     // non-expired ad cached
+val onScreen = helper.isShowing
 ```
 
-A fresh ad is requested automatically after each dismissal.
+Cached interstitials expire after ~1 hour on AdMob's side; the helper drops a stale ad instead of
+burning the show on an "ad expired" failure. With `autoReload = true` a fresh ad is requested
+automatically after each dismissal; leave it off (default) to control every request yourself via
+`preload`. Only one full-screen ad (any format) can ever be on screen at a time — a `show()` while
+another is presenting is refused and the ad stays cached (see `NextGenAds.isFullScreenAdShowing()`).
 
 ### Show on every Nth call (counter)
 
@@ -394,17 +402,24 @@ after loading — the helper tracks this and silently refetches a stale ad rathe
 ### Auto show on foreground (recommended)
 
 `AppOpenAdManager` wires itself to the process lifecycle and shows an ad each time the app returns
-to the foreground, keeping the next one warm in between. Install it once, after `initialize`:
+to the foreground. Install it once, after `initialize`:
 
 ```kotlin
 // In Application.onCreate(), after NextGenAds.initialize(...):
 AppOpenAdManager.install(this, APP_OPEN_UNIT)
+    .skipOn(SplashActivity::class.java) // never cover these screens
 ```
+
+On a genuine background→foreground transition a cached (non-expired) ad shows instantly. If none is
+cached, one is requested at that moment and shown only when it loads within `loadTimeoutMs`
+(default 5 s) while the app is still in the foreground — an ad that arrives later is **never**
+popped over app content mid-session; it stays cached so the *next* return shows instantly.
 
 The first foreground after a cold start is skipped by default (the ad usually isn't ready yet and
 showing one over your splash hurts UX) — set `showOnColdStart = true` to opt in. Pause auto-showing
 at any time with `AppOpenAdManager.get()?.enabled = false`; the premium / kill-switch gate in
-`NextGenAds` is always honoured.
+`NextGenAds` is always honoured. Activities implementing `HideAppOpenAd` (or registered via
+`skipOn`) are never covered, and an app-open never stacks on another full-screen ad.
 
 ### Manual control
 
@@ -465,13 +480,17 @@ NextGenAds.registerEventListener(object : AdEventListener {
     }
 
     // Estimated revenue — forward to Firebase `ad_impression` for ROAS measurement.
-    override fun onAdPaid(format: AdFormat, adUnitId: String, value: AdValue) {
+    override fun onAdPaid(format: AdFormat, adUnitId: String, value: AdValue, responseInfo: ResponseInfo?) {
         firebaseAnalytics.logEvent(FirebaseAnalytics.Event.AD_IMPRESSION, Bundle().apply {
             putString(FirebaseAnalytics.Param.AD_PLATFORM, "NextGenAds")
             putString(FirebaseAnalytics.Param.AD_FORMAT, format.name)
             putString(FirebaseAnalytics.Param.AD_UNIT_NAME, adUnitId)
             putDouble(FirebaseAnalytics.Param.VALUE, value.valueMicros / 1_000_000.0)
             putString(FirebaseAnalytics.Param.CURRENCY, value.currencyCode)
+            // responseInfo carries the winning mediation ad source for richer attribution.
+            responseInfo?.loadedAdSourceResponseInfo?.name?.let {
+                putString(FirebaseAnalytics.Param.AD_SOURCE, it)
+            }
         })
     }
 
@@ -535,8 +554,11 @@ library can bind the assets:
 
 ## Show rate & fill rate tips
 
-- **Preload** every format right after `initialize` completes, and again on dismissal (the library
-  auto-refills caches after a cached ad is consumed).
+- **Preload** every format right after `initialize` completes. Pass `refill = true` to
+  `populate` / `loadAdaptiveBanner` (or set `autoReload = true` on full-screen helpers) so consuming
+  a cached ad automatically warms the next one.
+- Cached ads **expire** (~1 h for interstitial/rewarded/native/banner, 4 h for app-open). The
+  helpers drop stale inventory instead of failing the show — tune via each helper's `adValidityMs`.
 - Keep `BannerNativeView` / `NativeTemplateView` instances around and rebind, rather than recreating.
 - Bump `NativeAdHelper.maxCachePerUnit` / `BannerAdHelper.maxCachePerUnit` for high-traffic screens.
 - **Fill rate is mostly server-side**: configure **mediation** in the AdMob console and use real ad
@@ -563,8 +585,9 @@ Google's official test ids (safe during development — replace before release):
 
 ## ProGuard / R8
 
-The library ships consumer ProGuard rules (`consumer-rules.keep`), so no extra configuration is
-needed in your app. The Next-Gen Ads SDK and UMP bring their own keep rules too.
+No extra configuration is needed in your app: the library's public API survives R8 through normal
+reference-based keep analysis, and the Next-Gen Ads SDK, UMP and Shimmer all bring their own
+consumer keep rules.
 
 ---
 
@@ -593,7 +616,7 @@ com.alihassan.nextgenads
 ├── consent.ConsentManager             // UMP consent
 ├── banner.BannerAdHelper              // adaptive banners
 ├── nativead.NativeAdHelper            // native loading + cache
-├── nativead.NativeTemplate            // SMALL, MEDIUM, LARGE, BANNER, MEDIA_LEFT
+├── nativead.NativeTemplate            // SMALL, MEDIUM, LARGE, BANNER, MEDIA_LEFT, COLLAPSIBLE
 ├── nativead.NativeTemplateView        // renders a NativeTemplate
 ├── interstitial.Interstitials         // registry  → InterstitialAdHelper
 ├── rewarded.RewardedAds               // registry  → RewardedAdHelper

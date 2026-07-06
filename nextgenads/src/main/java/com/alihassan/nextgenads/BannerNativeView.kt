@@ -10,6 +10,7 @@ import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.nativead.NativeAdHelper
 import com.alihassan.nextgenads.nativead.NativeTemplate
 import com.alihassan.nextgenads.nativead.NativeTemplateView
+import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 
 /** Whether a [BannerNativeView] renders a banner or a native ad. */
 enum class AdType {
@@ -36,7 +37,7 @@ enum class AdType {
  *     android:id="@+id/adView"
  *     android:layout_width="match_parent"
  *     android:layout_height="wrap_content"
- *     app:ngad_ad_type="native"
+ *     app:ngad_ad_type="nativead"
  *     app:ngad_template="medium" />
  * ```
  * Code:
@@ -140,6 +141,7 @@ class BannerNativeView @JvmOverloads constructor(
             existing.showShimmer()
             return existing
         }
+        destroyBannerChildren() // a previous banner placement must be released, not just detached
         removeAllViews()
         val view = NativeTemplateView(context).also {
             it.setTemplate(nativeTemplate)
@@ -151,15 +153,24 @@ class BannerNativeView @JvmOverloads constructor(
 
     private fun hide() {
         nativeView?.destroy() // release the bound native ad so it isn't leaked
+        destroyBannerChildren()
         removeAllViews()
         nativeView = null
         visibility = View.GONE
     }
 
-    /** Releases native ad resources. Call from the host's `onDestroy`. */
+    /** Releases banner / native ad resources. Call from the host's `onDestroy`. */
     fun destroy() {
         nativeView?.destroy()
+        destroyBannerChildren()
         nativeView = null
+    }
+
+    /** Destroys any banner [AdView] children so a replaced/discarded banner isn't leaked. */
+    private fun destroyBannerChildren() {
+        for (i in 0 until childCount) {
+            (getChildAt(i) as? AdView)?.destroy()
+        }
     }
 
     private fun Context.findActivity(): Activity? {

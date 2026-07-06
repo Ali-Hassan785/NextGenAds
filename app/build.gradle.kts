@@ -32,6 +32,10 @@ android {
             }
         }
     }
+    buildFeatures {
+        // BuildConfig.DEBUG gates the UMP test-device hash so it can't ship in release builds.
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

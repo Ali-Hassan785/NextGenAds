@@ -3,6 +3,7 @@ package com.alihassan.nextgenads.rewarded
 import android.app.Activity
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
@@ -29,7 +30,9 @@ class RewardedAdHelper(private val adUnitId: String) {
 
     private val handler = Handler(Looper.getMainLooper())
     private var rewardedAd: RewardedAd? = null
+    private var loadedAtElapsed = 0L
     private var loading = false
+    private var showing = false
     private var retryCount = 0
     // Concurrent load() callers all get notified instead of every caller-after-the-first being dropped.
     private val pending = mutableListOf<(Boolean) -> Unit>()
@@ -37,22 +40,48 @@ class RewardedAdHelper(private val adUnitId: String) {
     /** Maximum number of automatic reload attempts after a failed load. */
     var maxRetries = 3
 
-    val isReady: Boolean
-        get() = rewardedAd != null
+    /**
+     * How long (ms) a loaded rewarded ad stays valid in the cache. AdMob full-screen ads expire
+     * roughly an hour after loading; a stale ad's show fails and the reward opportunity is lost, so
+     * anything older is dropped and re-requested instead of shown.
+     */
+    var adValidityMs = 55 * 60 * 1000L
 
-    /** Preloads the ad if not already available / in flight. */
+    /** A non-expired ad is cached and ready to show. */
+    val isReady: Boolean
+        get() = rewardedAd != null && !isExpired
+
+    /** `true` while this helper's rewarded ad is on screen (or committed to showing). */
+    val isShowing: Boolean
+        get() = showing
+
+    private val isExpired: Boolean
+        get() = SystemClock.elapsedRealtime() - loadedAtElapsed >= adValidityMs
+
+    private fun evictIfExpired() {
+        if (rewardedAd != null && isExpired) {
+            NextGenAds.log("Rewarded expired after ${adValidityMs / 60_000}min, dropping: $adUnitId")
+            rewardedAd = null
+        }
+    }
+
+    /**
+     * Preloads the ad if not already available / in flight. Safe to call from any thread; state is
+     * mutated (and [onResult] delivered) on the main thread.
+     */
     @JvmOverloads
-    fun load(onResult: ((Boolean) -> Unit)? = null) {
+    fun load(onResult: ((Boolean) -> Unit)? = null) = NextGenAds.runOnMain {
         if (!NextGenAds.canRequest()) {
             onResult?.invoke(false)
-            return
+            return@runOnMain
         }
+        evictIfExpired()
         if (rewardedAd != null) {
             onResult?.invoke(true)
-            return
+            return@runOnMain
         }
         onResult?.let { pending.add(it) }
-        if (loading) return // a load is already in flight; this caller is parked in `pending`
+        if (loading) return@runOnMain // a load is already in flight; this caller is parked in `pending`
         loading = true
         // Defer the request until the SDK is ready so preloads issued during app start are queued
         // rather than fired at an uninitialized SDK (which would fail and burn the retry budget).
@@ -73,6 +102,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                 override fun onAdLoaded(ad: RewardedAd) {
                     NextGenAds.runOnMain {
                         rewardedAd = ad
+                        loadedAtElapsed = SystemClock.elapsedRealtime()
                         loading = false
                         retryCount = 0
                         NextGenAds.log("Rewarded loaded: $adUnitId")
@@ -84,17 +114,28 @@ class RewardedAdHelper(private val adUnitId: String) {
                 override fun onAdFailedToLoad(adError: LoadAdError) {
                     NextGenAds.runOnMain {
                         rewardedAd = null
-                        loading = false
                         NextGenAds.log("Rewarded failed ($adUnitId): $adError")
                         NextGenAds.dispatchFailedToLoad(AdFormat.REWARDED, adUnitId, adError)
                         if (retryCount < maxRetries && !NextGenAds.isRequestPaused()) {
+                            // Keep `loading` true and the waiters parked: the load isn't over until
+                            // the retry budget is spent. Settling them now would make loadAndShow
+                            // give up seconds before the retry succeeds — a lost show.
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
-                            handler.postDelayed({ load() }, delayMs)
+                            handler.postDelayed({
+                                if (NextGenAds.canRequest()) {
+                                    requestAd()
+                                } else { // breaker tripped / ads disabled during the backoff wait
+                                    loading = false
+                                    retryCount = 0
+                                    flushPending(false)
+                                }
+                            }, delayMs)
                         } else {
+                            loading = false
                             retryCount = 0 // reset budget so a later load() can retry afresh
+                            flushPending(false)
                         }
-                        flushPending(false)
                     }
                 }
             },
@@ -119,7 +160,7 @@ class RewardedAdHelper(private val adUnitId: String) {
             onDismiss()
             return
         }
-        if (rewardedAd != null) {
+        if (isReady) {
             show(activity, onReward, onDismiss)
             return
         }
@@ -137,7 +178,12 @@ class RewardedAdHelper(private val adUnitId: String) {
             if (settled) return@load
             settled = true
             handler.removeCallbacks(timeoutRunnable)
-            if (loaded && rewardedAd != null) show(activity, onReward, onDismiss) else onDismiss()
+            // The activity may have died while the load was in flight — keep the ad cached.
+            if (loaded && isReady && !activity.isFinishing && !activity.isDestroyed) {
+                show(activity, onReward, onDismiss)
+            } else {
+                onDismiss()
+            }
         }
     }
 
@@ -159,12 +205,22 @@ class RewardedAdHelper(private val adUnitId: String) {
             onDismiss()
             return false
         }
+        evictIfExpired()
         val ad = rewardedAd
         if (ad == null) {
             onDismiss()
             load() // make sure the next attempt has an ad ready
             return false
         }
+        if (showing || !NextGenAds.tryBeginFullScreenShow()) {
+            // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
+            NextGenAds.log("Rewarded show skipped ($adUnitId): a full-screen ad is already showing")
+            onDismiss()
+            return false
+        }
+        // Committed: take ownership so a concurrent show()/load() can't grab the same ad.
+        showing = true
+        rewardedAd = null
 
         ad.adEventCallback = object : RewardedAdEventCallback {
             override fun onAdShowedFullScreenContent() {
@@ -174,7 +230,8 @@ class RewardedAdHelper(private val adUnitId: String) {
 
             override fun onAdDismissedFullScreenContent() {
                 NextGenAds.runOnMain {
-                    rewardedAd = null
+                    showing = false
+                    NextGenAds.endFullScreenShow()
                     load()
                     NextGenAds.dispatchDismissed(AdFormat.REWARDED, adUnitId)
                     onDismiss()
@@ -183,7 +240,8 @@ class RewardedAdHelper(private val adUnitId: String) {
 
             override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
                 NextGenAds.runOnMain {
-                    rewardedAd = null
+                    showing = false
+                    NextGenAds.endFullScreenShow()
                     NextGenAds.log("Rewarded show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.REWARDED, adUnitId, fullScreenContentError)
                     load()

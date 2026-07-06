@@ -1,6 +1,11 @@
 package com.alihassan.nextgenads.banner
 
 import android.app.Activity
+import android.app.Application
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,9 +21,8 @@ import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
-import android.os.Handler
-import android.os.Looper
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Loads anchored adaptive banners (Next-Gen SDK) into a container, showing a shimmer placeholder
@@ -30,8 +34,12 @@ import java.util.ArrayDeque
 object BannerAdHelper {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val pool = HashMap<String, ArrayDeque<AdView>>()
+    private val pool = HashMap<String, ArrayDeque<CachedBanner>>()
     private val inFlight = HashMap<String, Int>()
+    private val purgeHookInstalled = AtomicBoolean(false)
+
+    /** A pooled detached banner plus its load timestamp, so stale inventory can be evicted. */
+    private class CachedBanner(val adView: AdView, val loadedAtElapsed: Long)
 
     /** Maximum number of preloaded banners cached per ad unit. */
     @JvmStatic
@@ -40,6 +48,13 @@ object BannerAdHelper {
     /** Maximum automatic reload attempts after a failed banner load (backoff: 1s, 2s, 4s …). */
     @JvmStatic
     var maxRetries = 2
+
+    /**
+     * How long (ms) a preloaded banner stays valid in the cache. Attaching a stale banner renders
+     * dead content, so anything older is destroyed on poll and a fresh one is loaded instead.
+     */
+    @JvmStatic
+    var adValidityMs = 55 * 60 * 1000L
 
     /**
      * Preloads up to [count] banners (capped by [maxCachePerUnit]) into a detached cache so that a
@@ -59,12 +74,21 @@ object BannerAdHelper {
         widthDp: Int = screenWidthDp(activity),
     ) {
         if (!NextGenAds.canRequest()) return
+        // Preloaded AdViews are created with this Activity as their context and sit detached in a
+        // process-wide pool — purge them when their Activity dies, or they'd leak it (and attach
+        // dead-context views later).
+        installPurgeHook(activity.application)
         val target = count.coerceIn(0, maxCachePerUnit)
         while (cachedCount(adUnitId) + inFlightCount(adUnitId) < target) {
             incFlight(adUnitId)
             // Queue until the SDK is ready so banner warm-ups issued during app start aren't
             // dropped. The AdView is built inside the block so we never touch the SDK pre-init.
             NextGenAds.whenInitialized {
+                if (activity.isFinishing || activity.isDestroyed) {
+                    // The preloading Activity died while queued — don't build a dead-context view.
+                    decFlight(adUnitId)
+                    return@whenInitialized
+                }
                 val adView = AdView(activity)
                 val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp)
                 loadBannerWithRetry(
@@ -110,6 +134,7 @@ object BannerAdHelper {
         val cached = poll(adUnitId)
         if (cached != null) {
             detachFromParent(cached)
+            destroyBannerChildren(container) // release any banner this placement was showing before
             container.removeAllViews()
             container.addView(cached)
             container.visibility = View.VISIBLE
@@ -128,6 +153,7 @@ object BannerAdHelper {
 
         val shimmer = LayoutInflater.from(activity)
             .inflate(R.layout.ngad_shimmer_banner, container, false) as ShimmerFrameLayout
+        destroyBannerChildren(container) // release any banner this placement was showing before
         container.removeAllViews()
 
         val adView = AdView(activity)
@@ -156,6 +182,7 @@ object BannerAdHelper {
                 onFailed = { error ->
                     shimmer.stopShimmer()
                     container.removeAllViews()
+                    adView.destroy() // the failed view is never reused
                     container.visibility = View.GONE
                     onFailed?.invoke(error)
                 },
@@ -238,7 +265,9 @@ object BannerAdHelper {
 
     private fun bannerWidthDp(activity: Activity, container: ViewGroup): Int {
         val metrics = activity.resources.displayMetrics
-        var widthPx = container.width.toFloat()
+        // Content width: the banner renders inside the padding, so subtract it — otherwise the SDK
+        // logs "Not enough space to show the full ad" and may clip.
+        var widthPx = (container.width - container.paddingLeft - container.paddingRight).toFloat()
         if (widthPx <= 0f) widthPx = metrics.widthPixels.toFloat()
         return (widthPx / metrics.density).toInt()
     }
@@ -252,13 +281,67 @@ object BannerAdHelper {
         (view.parent as? ViewGroup)?.removeView(view)
     }
 
+    /** Destroys any [AdView] children of [container] so a replaced banner isn't leaked. */
+    private fun destroyBannerChildren(container: ViewGroup) {
+        for (i in 0 until container.childCount) {
+            (container.getChildAt(i) as? AdView)?.destroy()
+        }
+    }
+
+    /**
+     * Purges pooled banners whose creating Activity is being destroyed. Installed once, on the
+     * first [preload]; without it a detached cached AdView would keep its dead Activity reachable
+     * indefinitely.
+     */
+    private fun installPurgeHook(application: Application) {
+        if (!purgeHookInstalled.compareAndSet(false, true)) return
+        application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityDestroyed(activity: Activity) = purgeForActivity(activity)
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        })
+    }
+
     @Synchronized
-    private fun poll(adUnitId: String): AdView? = pool[adUnitId]?.pollFirst()
+    private fun purgeForActivity(activity: Activity) {
+        pool.values.forEach { queue ->
+            val it = queue.iterator()
+            while (it.hasNext()) {
+                val cached = it.next()
+                if (cached.adView.context === activity) {
+                    it.remove()
+                    cached.adView.destroy()
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    private fun poll(adUnitId: String): AdView? {
+        val queue = pool[adUnitId] ?: return null
+        // Evict-and-skip entries that expired or whose Activity died while they sat in the pool.
+        while (true) {
+            val cached = queue.pollFirst() ?: return null
+            val expired = SystemClock.elapsedRealtime() - cached.loadedAtElapsed >= adValidityMs
+            val deadContext = (cached.adView.context as? Activity)?.isDestroyed == true
+            if (!expired && !deadContext) return cached.adView
+            NextGenAds.log("Banner cache entry ${if (expired) "expired" else "from destroyed activity"}, destroying: $adUnitId")
+            cached.adView.destroy()
+        }
+    }
 
     @Synchronized
     private fun offer(adUnitId: String, adView: AdView) {
         val queue = pool.getOrPut(adUnitId) { ArrayDeque() }
-        if (queue.size >= maxCachePerUnit) adView.destroy() else queue.addLast(adView)
+        if (queue.size >= maxCachePerUnit) {
+            adView.destroy()
+        } else {
+            queue.addLast(CachedBanner(adView, SystemClock.elapsedRealtime()))
+        }
     }
 
     @Synchronized

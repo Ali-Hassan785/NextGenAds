@@ -33,12 +33,15 @@ import java.util.ArrayDeque
 object NativeAdHelper {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val pool = HashMap<String, ArrayDeque<NativeAd>>()
+    private val pool = HashMap<String, ArrayDeque<CachedAd>>()
     private val inFlight = HashMap<String, Int>()
     // Placements waiting for the next ad of a unit. Delivered a NativeAd on success, or null (with
     // the LoadAdError) once retries are exhausted, so the placement can collapse instead of
     // shimmering forever.
     private val waiters = HashMap<String, ArrayDeque<(NativeAd?, LoadAdError?) -> Unit>>()
+
+    /** A pooled ad plus its load timestamp, so stale inventory can be evicted instead of bound. */
+    private class CachedAd(val ad: NativeAd, val loadedAtElapsed: Long)
 
     /** Maximum number of ads cached per ad unit. */
     @JvmStatic
@@ -49,24 +52,38 @@ object NativeAdHelper {
     var maxRetries = 3
 
     /**
+     * How long (ms) a preloaded native ad stays valid in the cache. AdMob ads go stale roughly an
+     * hour after loading; binding a stale ad renders dead content / dead click-through, so anything
+     * older is destroyed on poll and a fresh ad is loaded instead.
+     */
+    @JvmStatic
+    var adValidityMs = 55 * 60 * 1000L
+
+    /**
      * Low-level single native ad load with automatic retry/backoff. [onLoaded] fires on success;
-     * [onFailed] fires only once every retry is exhausted.
+     * [onFailed] fires once every retry is exhausted — with a `null` error when the load was
+     * aborted because ads were disabled (premium / kill-switch) rather than refused by the SDK.
      */
     @JvmStatic
     @JvmOverloads
     fun load(
         adUnitId: String,
         onLoaded: (NativeAd) -> Unit,
-        onFailed: ((LoadAdError) -> Unit)? = null,
+        onFailed: ((LoadAdError?) -> Unit)? = null,
     ) = loadWithRetry(adUnitId, attempt = 0, onLoaded = onLoaded, onFailed = onFailed)
 
     private fun loadWithRetry(
         adUnitId: String,
         attempt: Int,
         onLoaded: (NativeAd) -> Unit,
-        onFailed: ((LoadAdError) -> Unit)?,
+        onFailed: ((LoadAdError?) -> Unit)?,
     ) {
-        if (!NextGenAds.canShowAds()) return
+        if (!NextGenAds.canShowAds()) {
+            // Must settle the callback: silently dropping it would leak the caller's in-flight
+            // accounting (waiters would shimmer forever and block future loads for this unit).
+            onFailed?.invoke(null)
+            return
+        }
 
         val request = NativeAdRequest
             .Builder(adUnitId, listOf(NativeAd.NativeAdType.NATIVE))
@@ -74,6 +91,10 @@ object NativeAdHelper {
 
         // Queue until the SDK is ready so cache warm-ups issued during app start aren't dropped.
         NextGenAds.whenInitialized {
+            if (!NextGenAds.canShowAds()) { // may have flipped while queued for initialization
+                onFailed?.invoke(null)
+                return@whenInitialized
+            }
             NextGenAds.countRequest(AdFormat.NATIVE, adUnitId)
             val startElapsed = SystemClock.elapsedRealtime()
             NativeAdLoader.load(
@@ -149,6 +170,11 @@ object NativeAdHelper {
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
     ) {
+        if (!NextGenAds.canShowAds()) {
+            // Premium / kill-switch: even a cached ad must not be shown.
+            templateView.showError()
+            return
+        }
         templateView.showShimmer()
 
         val cached = poll(adUnitId)
@@ -188,10 +214,11 @@ object NativeAdHelper {
     /** Destroys every cached ad for an ad unit (or all units when [adUnitId] is null). */
     @JvmStatic
     @JvmOverloads
-    fun clear(adUnitId: String? = null) = synchronized(pool) {
+    @Synchronized
+    fun clear(adUnitId: String? = null) {
         val keys = if (adUnitId != null) listOf(adUnitId) else pool.keys.toList()
         keys.forEach { key ->
-            pool.remove(key)?.forEach { it.destroy() }
+            pool.remove(key)?.forEach { it.ad.destroy() }
         }
     }
 
@@ -253,12 +280,25 @@ object NativeAdHelper {
     }
 
     @Synchronized
-    private fun poll(adUnitId: String): NativeAd? = pool[adUnitId]?.pollFirst()
+    private fun poll(adUnitId: String): NativeAd? {
+        val queue = pool[adUnitId] ?: return null
+        // Evict-and-skip stale entries: binding an expired ad shows dead content and wastes the slot.
+        while (true) {
+            val cached = queue.pollFirst() ?: return null
+            if (SystemClock.elapsedRealtime() - cached.loadedAtElapsed < adValidityMs) return cached.ad
+            NextGenAds.log("Native cache entry expired, destroying: $adUnitId")
+            cached.ad.destroy()
+        }
+    }
 
     @Synchronized
     private fun offer(adUnitId: String, ad: NativeAd) {
         val queue = pool.getOrPut(adUnitId) { ArrayDeque() }
-        if (queue.size >= maxCachePerUnit) ad.destroy() else queue.addLast(ad)
+        if (queue.size >= maxCachePerUnit) {
+            ad.destroy()
+        } else {
+            queue.addLast(CachedAd(ad, SystemClock.elapsedRealtime()))
+        }
     }
 
     @Synchronized

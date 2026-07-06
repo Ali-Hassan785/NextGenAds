@@ -31,8 +31,10 @@ class SampleApp : Application() {
         NextGenAds.enableConnectivityRecovery(this)
 
         // Auto-show an app-open ad ONLY on a genuine return to the foreground (app was actually
-        // backgrounded). It requests on demand at that moment — never at startup and never a "next"
-        // ad after showing one. Screens can opt out via HideAppOpenAd or skipOn(...), e.g.:
+        // backgrounded). It requests on demand at that moment; the ad is shown only if it loads
+        // within the manager's show window (loadTimeoutMs, default 5s) — a later-arriving ad is
+        // cached for the next return instead of popping over app content. Screens can opt out via
+        // HideAppOpenAd or skipOn(...), e.g.:
         //   AppOpenAdManager.install(this, APP_OPEN_UNIT)
         //       .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
         AppOpenAdManager.install(this, APP_OPEN_UNIT)

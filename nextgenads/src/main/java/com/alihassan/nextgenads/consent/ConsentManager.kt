@@ -34,6 +34,12 @@ class ConsentManager private constructor(
     private val consentInformation: ConsentInformation =
         UserMessagingPlatform.getConsentInformation(context.applicationContext)
 
+    init {
+        // Gate every ad request in the library on UMP consent: once an app uses this manager, no
+        // helper can fire a pre-consent request (NextGenAds.canRequest consults this).
+        NextGenAds.consentProvider = { consentInformation.canRequestAds() }
+    }
+
     /** `true` once we are allowed to request ads (consent obtained or not required). */
     val canRequestAds: Boolean
         get() = consentInformation.canRequestAds()
@@ -48,15 +54,17 @@ class ConsentManager private constructor(
      * Safe to call on every app launch; [onComplete] is always invoked (with a non-null
      * [FormError] on failure).
      *
-     * When a test-device hash was supplied to [getInstance], that device is registered as a test
-     * device and [forceEea] defaults to `true` so the form is shown even outside the EEA.
+     * When a test-device hash was supplied to [getInstance], that device is registered as a UMP
+     * test device. Pass `forceEea = true` (test devices only) to also force the EEA debug
+     * geography so the form appears from any region. Both are debug facilities — never enable
+     * them for production users.
      *
      * @param forceEea when `true`, forces the EEA debug geography (for testing the form).
      */
     @JvmOverloads
     fun gatherConsent(
         activity: Activity,
-        forceEea: Boolean = testDeviceHashedId != null,
+        forceEea: Boolean = false,
         onComplete: (FormError?) -> Unit,
     ) {
         val paramsBuilder = ConsentRequestParameters.Builder()
@@ -75,6 +83,12 @@ class ConsentManager private constructor(
             activity,
             paramsBuilder.build(),
             {
+                if (activity.isFinishing || activity.isDestroyed) {
+                    // The gathering screen died during the async update — don't try to present a
+                    // form over it. canRequestAds may still be true from a previous session.
+                    onComplete(null)
+                    return@requestConsentInfoUpdate
+                }
                 UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
                     NextGenAds.log("Consent gathered, error=${formError?.message}")
                     onComplete(formError)
@@ -114,9 +128,19 @@ class ConsentManager private constructor(
          */
         @JvmStatic
         @JvmOverloads
-        fun getInstance(context: Context, testDeviceHashedId: String? = null): ConsentManager =
-            instance ?: synchronized(this) {
+        fun getInstance(context: Context, testDeviceHashedId: String? = null): ConsentManager {
+            instance?.let {
+                if (testDeviceHashedId != null && testDeviceHashedId != it.testDeviceHashedId) {
+                    NextGenAds.log(
+                        "ConsentManager.getInstance: ignoring new testDeviceHashedId — the first " +
+                            "instance's debug settings are kept for the process lifetime",
+                    )
+                }
+                return it
+            }
+            return synchronized(this) {
                 instance ?: ConsentManager(context, testDeviceHashedId).also { instance = it }
             }
+        }
     }
 }

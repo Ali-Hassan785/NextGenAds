@@ -60,8 +60,9 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
-    // ProcessLifecycleOwner — used by AppOpenAdManager to detect app foregrounding.
-    implementation(libs.androidx.lifecycle.process)
+    // ProcessLifecycleOwner — used by AppOpenAdManager to detect app foregrounding. `api` because
+    // AppOpenAdManager implements DefaultLifecycleObserver, so the type is part of our public ABI.
+    api(libs.androidx.lifecycle.process)
 
     // Google Mobile Ads SDK (Next Generation) — exposed transitively so apps can use ad types.
     api(libs.ads.mobile.sdk)
