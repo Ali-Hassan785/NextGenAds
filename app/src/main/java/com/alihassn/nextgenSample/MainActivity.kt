@@ -281,16 +281,13 @@ class MainActivity : AppCompatActivity() {
         setStatus("Preloading interstitial…")
     }
 
-    /** Shows a preloaded interstitial if one is ready. */
+    /** Shows a preloaded interstitial, or loads a fresh one on demand when none is cached. */
     private fun showInterstitial() {
         if (!ensureReady()) return
         val helper = Interstitials.get(INTERSTITIAL_UNIT)
-        if (!helper.isReady) {
-            setStatus("No interstitial ready — preload first")
-            return
-        }
-        setStatus("Showing interstitial…")
-        helper.show(this) { setStatus("Interstitial dismissed ✓") }
+        setStatus(if (helper.isReady) "Showing interstitial…" else "No ad preloaded — loading a fresh interstitial…")
+        // Show the cached ad instantly if ready, otherwise request one on demand and show it.
+        helper.loadAndShow(this, timeoutMs = 8_000L) { setStatus("Interstitial dismissed ✓") }
     }
 
     /** Loads an interstitial on demand and shows it as soon as it is ready. */
@@ -344,22 +341,19 @@ class MainActivity : AppCompatActivity() {
         setStatus("Preloading rewarded…")
     }
 
-    /** Asks the user to opt in via a dialog, then shows the rewarded ad if one is ready. */
+    /** Asks the user to opt in, then shows a preloaded rewarded ad — or loads a fresh one on demand. */
     private fun showRewardedWithDialog() {
         if (!ensureReady()) return
         val helper = RewardedAds.get(REWARDED_UNIT)
-        if (!helper.isReady) {
-            setStatus("No rewarded ad ready — preload first")
-            return
-        }
         MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short video to earn your reward?")
             .setPositiveButton("Watch") { _, _ ->
-                setStatus("Showing rewarded…")
+                setStatus(if (helper.isReady) "Showing rewarded…" else "Loading a fresh rewarded ad…")
                 var earned = false
-                helper.show(
+                helper.loadAndShow(
                     activity = this,
+                    timeoutMs = 10_000L,
                     onReward = { reward ->
                         earned = true
                         setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
@@ -386,22 +380,19 @@ class MainActivity : AppCompatActivity() {
         setStatus("Preloading rewarded interstitial…")
     }
 
-    /** Asks the user to opt in via a dialog, then shows the rewarded interstitial if ready. */
+    /** Asks the user to opt in, then shows a preloaded rewarded interstitial — or loads a fresh one. */
     private fun showRewardedInterstitialWithDialog() {
         if (!ensureReady()) return
         val helper = RewardedInterstitials.get(REWARDED_INT_UNIT)
-        if (!helper.isReady) {
-            setStatus("No rewarded interstitial ready — preload first")
-            return
-        }
         MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short ad to earn your reward?")
             .setPositiveButton("Watch") { _, _ ->
-                setStatus("Showing rewarded interstitial…")
+                setStatus(if (helper.isReady) "Showing rewarded interstitial…" else "Loading a fresh rewarded interstitial…")
                 var earned = false
-                helper.show(
+                helper.loadAndShow(
                     activity = this,
+                    timeoutMs = 10_000L,
                     onReward = { reward ->
                         earned = true
                         setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
@@ -435,13 +426,9 @@ class MainActivity : AppCompatActivity() {
     private fun showAppOpen() {
         if (!ensureReady()) return
         val helper = AppOpenAds.get(SampleApp.APP_OPEN_UNIT)
-        if (!helper.isReady) {
-            setStatus("No app-open ad ready — preload first")
-            helper.load()
-            return
-        }
-        setStatus("Showing app open…")
-        helper.show(this) { setStatus("App open dismissed ✓") }
+        setStatus(if (helper.isReady) "Showing app open…" else "No ad preloaded — loading a fresh app-open ad…")
+        // Show the cached ad instantly if ready, otherwise request one on demand and show it.
+        helper.loadAndShow(this, timeoutMs = 8_000L) { setStatus("App open dismissed ✓") }
     }
 
     // --- helpers -----------------------------------------------------------
