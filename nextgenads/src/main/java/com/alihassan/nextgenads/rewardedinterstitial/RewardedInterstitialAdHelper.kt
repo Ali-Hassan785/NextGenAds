@@ -276,12 +276,29 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
         )
         return true
     }
+
+    /**
+     * Drops the cached ad and cancels any in-flight load / retry — used when ads are disabled at
+     * runtime (e.g. the user goes premium). A currently-showing ad is left to finish.
+     */
+    fun clear() = NextGenAds.runOnMain {
+        if (showing) return@runOnMain
+        handler.removeCallbacksAndMessages(null)
+        rewardedInterstitialAd = null
+        loading = false
+        retryCount = 0
+        flushPending(false)
+    }
 }
 
 /** Registry that keeps one [RewardedInterstitialAdHelper] per ad unit alive for reuse. */
 object RewardedInterstitials {
 
     private val helpers = ConcurrentHashMap<String, RewardedInterstitialAdHelper>()
+
+    /** Drops every cached rewarded-interstitial across all units (e.g. on going premium). */
+    @JvmStatic
+    fun clearAll() = helpers.values.forEach { it.clear() }
 
     @JvmStatic
     fun get(adUnitId: String): RewardedInterstitialAdHelper =

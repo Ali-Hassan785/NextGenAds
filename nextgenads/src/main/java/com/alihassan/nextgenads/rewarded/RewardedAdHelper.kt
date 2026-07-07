@@ -276,12 +276,29 @@ class RewardedAdHelper(private val adUnitId: String) {
         )
         return true
     }
+
+    /**
+     * Drops the cached ad and cancels any in-flight load / retry — used when ads are disabled at
+     * runtime (e.g. the user goes premium). A currently-showing ad is left to finish.
+     */
+    fun clear() = NextGenAds.runOnMain {
+        if (showing) return@runOnMain
+        handler.removeCallbacksAndMessages(null)
+        rewardedAd = null
+        loading = false
+        retryCount = 0
+        flushPending(false)
+    }
 }
 
 /** Registry that keeps one [RewardedAdHelper] per ad unit alive for reuse across screens. */
 object RewardedAds {
 
     private val helpers = ConcurrentHashMap<String, RewardedAdHelper>()
+
+    /** Drops every cached rewarded ad across all units (e.g. on going premium / low memory). */
+    @JvmStatic
+    fun clearAll() = helpers.values.forEach { it.clear() }
 
     @JvmStatic
     fun get(adUnitId: String): RewardedAdHelper =

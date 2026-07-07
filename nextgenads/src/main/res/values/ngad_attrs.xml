@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Which native template to inflate. Keep values in sync with NativeTemplate.fromAttr(). -->
-    <attr name="ngad_template" format="enum">
-        <enum name="small" value="0" />
-        <enum name="medium" value="1" />
-        <enum name="large" value="2" />
-        <enum name="banner" value="3" />
-        <enum name="media_left" value="4" />
-        <enum name="collapsible" value="5" />
-    </attr>
+    <!-- Which native template to inflate, by name (case-insensitive), e.g. "medium", "hero".
+         Matched against the NativeTemplate enum names via NativeTemplate.fromName(); an unknown or
+         missing value falls back to MEDIUM. -->
+    <attr name="ngad_template" format="string" />
 
     <declare-styleable name="NativeTemplateView">
         <attr name="ngad_template" />
+        <!-- Optional caller-supplied native layout (root must be a NativeAdView). When set, it
+             overrides ngad_template. See NativeTemplateView for the recognised ngad_* asset IDs. -->
+        <attr name="ngad_customLayout" format="reference" />
+        <!-- Optional shimmer placeholder (root must be a ShimmerFrameLayout) for a custom layout. -->
+        <attr name="ngad_customShimmer" format="reference" />
     </declare-styleable>
 
     <declare-styleable name="BannerNativeView">

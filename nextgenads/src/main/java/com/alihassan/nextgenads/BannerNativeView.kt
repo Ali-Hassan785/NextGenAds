@@ -50,7 +50,7 @@ class BannerNativeView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : FrameLayout(context, attrs, defStyleAttr) {
+) : FrameLayout(context, attrs, defStyleAttr), NextGenAds.PremiumAware {
 
     /** Banner or native. Can be overridden per [load] call. */
     var adType: AdType = AdType.NATIVE
@@ -65,7 +65,7 @@ class BannerNativeView @JvmOverloads constructor(
             val typed = context.obtainStyledAttributes(it, R.styleable.BannerNativeView)
             adType = AdType.fromAttr(typed.getInt(R.styleable.BannerNativeView_ngad_ad_type, 1))
             nativeTemplate =
-                NativeTemplate.fromAttr(typed.getInt(R.styleable.BannerNativeView_ngad_template, 1))
+                NativeTemplate.fromName(typed.getString(R.styleable.BannerNativeView_ngad_template))
             typed.recycle()
         }
     }
@@ -165,6 +165,19 @@ class BannerNativeView @JvmOverloads constructor(
         destroyBannerChildren()
         nativeView = null
     }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        NextGenAds.registerAdSlot(this)
+    }
+
+    override fun onDetachedFromWindow() {
+        NextGenAds.unregisterAdSlot(this)
+        super.onDetachedFromWindow()
+    }
+
+    /** Ads disabled at runtime (e.g. the user goes premium) — release and hide any shown ad. */
+    override fun onAdsDisabled() = hide()
 
     /** Destroys any banner [AdView] children so a replaced/discarded banner isn't leaked. */
     private fun destroyBannerChildren() {

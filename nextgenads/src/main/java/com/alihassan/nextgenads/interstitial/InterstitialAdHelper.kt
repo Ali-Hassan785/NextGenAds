@@ -398,9 +398,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
 
     /**
      * Counter-gated show: increments an internal call counter and only shows the interstitial on
-     * every [every]-th call — e.g. `showOnCount(activity, every = 3) { … }` shows an ad on every
-     * third level/screen transition. The readiness check and frequency cap of [show] still apply,
-     * so a call can be counted but skip showing if no ad is ready.
+     * every [nth]-th call — e.g. `showEvery(activity, nth = 3) { … }` shows an ad on every third
+     * level/screen transition. The readiness check and frequency cap of [show] still apply, so a
+     * call can be counted but skip showing if no ad is ready.
      *
      * When [forceLoad] is `true` and the gate opens with no ad cached, the ad is requested on demand
      * and shown as soon as it loads (via [loadAndShow], bounded by [timeoutMs]) instead of skipping
@@ -411,22 +411,22 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * that unit. [onDismiss] is always invoked (immediately when this call doesn't show an ad), so
      * callers can proceed uniformly.
      *
-     * @param every show on every Nth call; values `<= 1` show on every call.
+     * @param nth show on every Nth call; values `<= 1` show on every call.
      * @param forceLoad when the gate opens with no cached ad, load one on demand and show it.
      * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
      *   used when [forceLoad] is `true`.
      * @return `true` if an ad is being shown (or, when forced, is being loaded to show).
      */
     @JvmOverloads
-    fun showOnCount(
+    fun showEvery(
         activity: Activity,
-        every: Int = 1,
+        nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
     ): Boolean {
         triggerCount++
-        if (every > 1 && triggerCount % every != 0) {
+        if (nth > 1 && triggerCount % nth != 0) {
             onDismiss()
             return false
         }
@@ -435,9 +435,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
 
     /**
      * "Show first, then every Nth" counter-gated show — shows on the **first** call and then on
-     * every [interval]-th call afterwards. With `interval = 4` an ad shows on call 1, 5, 9, 13, …
-     * (i.e. the first click, then after every 4 clicks). This differs from [showOnCount], which
-     * shows on multiples (N, 2N, 3N …) and never on the first call.
+     * every [nth]-th call afterwards. With `nth = 4` an ad shows on call 1, 5, 9, 13, … (i.e. the
+     * first click, then after every 4 clicks). This differs from [showEvery], which shows on
+     * multiples (N, 2N, 3N …) and never on the first call.
      *
      * When [forceLoad] is `true` and a gated-in call finds no cached ad, the ad is requested on
      * demand and shown as soon as it loads (via [loadAndShow], bounded by [timeoutMs]) instead of
@@ -447,7 +447,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * callers can proceed uniformly. Because helpers are shared per ad unit (via [Interstitials]),
      * the counter is app-wide.
      *
-     * @param interval clicks between shows after the first; values `<= 1` show on every call.
+     * @param nth clicks between shows after the first; values `<= 1` show on every call.
      * @param forceLoad when a gated-in call has no cached ad, load one on demand and show it.
      * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
      *   used when [forceLoad] is `true`.
@@ -456,14 +456,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
     @JvmOverloads
     fun showFirstThenEvery(
         activity: Activity,
-        interval: Int = 1,
+        nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
     ): Boolean {
         val count = ++triggerCount
-        // Show on 1, then 1 + interval, 1 + 2*interval … i.e. whenever (count - 1) is a multiple of interval.
-        val shouldShow = interval <= 1 || (count - 1) % interval == 0
+        // Show on 1, then 1 + nth, 1 + 2*nth … i.e. whenever (count - 1) is a multiple of nth.
+        val shouldShow = nth <= 1 || (count - 1) % nth == 0
         if (!shouldShow) {
             onDismiss()
             return false
@@ -471,9 +471,22 @@ class InterstitialAdHelper(private val adUnitId: String) {
         return showOrForceLoad(activity, forceLoad, timeoutMs, onDismiss)
     }
 
-    /** Resets the [showOnCount] / [showFirstThenEvery] counter back to zero. */
-    fun resetCounter() {
+    /** Resets the [showEvery] / [showFirstThenEvery] counter back to zero. */
+    fun resetTriggerCount() {
         triggerCount = 0
+    }
+
+    /**
+     * Drops the cached ad and cancels any in-flight load / retry — used when ads are disabled at
+     * runtime (e.g. the user goes premium). A currently-showing ad is left to finish.
+     */
+    fun clear() = NextGenAds.runOnMain {
+        if (showing) return@runOnMain
+        handler.removeCallbacksAndMessages(null)
+        interstitialAd = null
+        loading = false
+        retryCount = 0
+        flushPending(false)
     }
 
     private companion object {
@@ -495,6 +508,10 @@ object Interstitials {
     @JvmStatic
     fun preload(adUnitId: String) = get(adUnitId).load()
 
+    /** Drops every cached interstitial across all units (e.g. on going premium / low memory). */
+    @JvmStatic
+    fun clearAll() = helpers.values.forEach { it.clear() }
+
     /** Convenience: request (if needed) and show [adUnitId] on demand, bounded by [timeoutMs]. */
     @JvmStatic
     @JvmOverloads
@@ -506,35 +523,35 @@ object Interstitials {
     ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
 
     /**
-     * Convenience: counter-gated show for an ad unit — shows the interstitial on every [every]-th
+     * Convenience: counter-gated show for an ad unit — shows the interstitial on every [nth]-th
      * call. When [forceLoad] is `true` and the gate opens with no cached ad, one is loaded on demand
-     * (bounded by [timeoutMs]) and shown. See [InterstitialAdHelper.showOnCount].
+     * (bounded by [timeoutMs]) and shown. See [InterstitialAdHelper.showEvery].
      */
     @JvmStatic
     @JvmOverloads
-    fun showOnCount(
+    fun showEvery(
         activity: Activity,
         adUnitId: String,
-        every: Int = 1,
+        nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
-    ): Boolean = get(adUnitId).showOnCount(activity, every, forceLoad, timeoutMs, onDismiss)
+    ): Boolean = get(adUnitId).showEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
 
     /**
      * Convenience: "show first, then every Nth" counter-gated show — shows on the first call and
-     * then every [interval]-th call afterwards (call 1, 1 + interval, 1 + 2*interval …). When
-     * [forceLoad] is `true` and a gated-in call has no cached ad, one is loaded on demand (bounded
-     * by [timeoutMs]) and shown. See [InterstitialAdHelper.showFirstThenEvery].
+     * then every [nth]-th call afterwards (call 1, 1 + nth, 1 + 2*nth …). When [forceLoad] is
+     * `true` and a gated-in call has no cached ad, one is loaded on demand (bounded by [timeoutMs])
+     * and shown. See [InterstitialAdHelper.showFirstThenEvery].
      */
     @JvmStatic
     @JvmOverloads
     fun showFirstThenEvery(
         activity: Activity,
         adUnitId: String,
-        interval: Int = 1,
+        nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
-    ): Boolean = get(adUnitId).showFirstThenEvery(activity, interval, forceLoad, timeoutMs, onDismiss)
+    ): Boolean = get(adUnitId).showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
 }

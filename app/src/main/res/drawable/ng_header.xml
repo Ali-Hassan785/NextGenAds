@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console header: diagonal violet→indigo wash with a rounded bottom edge. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="135"
+        android:startColor="@color/ng_violet_deep"
+        android:centerColor="#2A2A66"
+        android:endColor="@color/ng_ink_2" />
+    <corners
+        android:bottomLeftRadius="26dp"
+        android:bottomRightRadius="26dp" />
+</shape>

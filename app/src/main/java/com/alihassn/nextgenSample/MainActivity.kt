@@ -1,5 +1,6 @@
 package com.alihassn.nextgenSample
 
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -13,8 +14,8 @@ import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.alihassan.nextgenads.AdType
@@ -22,6 +23,7 @@ import com.alihassan.nextgenads.BannerNativeView
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.banner.BannerAdHelper
+import com.alihassan.nextgenads.banner.BannerCollapsible
 import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.events.AdEventListener
 import com.alihassan.nextgenads.events.AdFormat
@@ -95,18 +97,27 @@ class MainActivity : AppCompatActivity() {
         templateGroup = findViewById(R.id.rgTemplate)
         adTypeGroup = findViewById(R.id.rgAdType)
 
-        // 1. Consent → initialize.
-        findViewById<Button>(R.id.btnConsent).setOnClickListener { gatherConsentAndInit() }
+        // Premium toggle — demonstrates the runtime purge (all cached ads dropped, shown ads hidden).
+        findViewById<Button>(R.id.btnPremiumToggle).setOnClickListener { togglePremium(it as Button) }
 
         // 2. Banner.
         findViewById<Button>(R.id.btnPreloadBanner).setOnClickListener { preloadBanner() }
         findViewById<Button>(R.id.btnShowBanner).setOnClickListener { showBanner() }
         findViewById<Button>(R.id.btnLoadShowBanner).setOnClickListener { showBanner() }
+        findViewById<Button>(R.id.btnCollapsibleBottom).setOnClickListener {
+            showCollapsibleBanner(BannerCollapsible.BOTTOM)
+        }
+        findViewById<Button>(R.id.btnCollapsibleTop).setOnClickListener {
+            showCollapsibleBanner(BannerCollapsible.TOP)
+        }
 
         // 3. Native.
         findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { preloadNative() }
         findViewById<Button>(R.id.btnShowNative).setOnClickListener { showNative() }
         findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { showNative() }
+        findViewById<Button>(R.id.btnCustomNative).setOnClickListener {
+            startActivity(Intent(this, CustomNativeActivity::class.java))
+        }
 
         // 4. Interstitial.
         findViewById<Button>(R.id.btnPreloadInterstitial).setOnClickListener { preloadInterstitial() }
@@ -125,6 +136,10 @@ class MainActivity : AppCompatActivity() {
         // 7. App open.
         findViewById<Button>(R.id.btnPreloadAppOpen).setOnClickListener { preloadAppOpen() }
         findViewById<Button>(R.id.btnShowAppOpen).setOnClickListener { showAppOpen() }
+
+        // Gather consent and initialize automatically as soon as the screen opens, so ads are ready
+        // without a manual tap (there is no consent button — this is the only trigger).
+        gatherConsentAndInit()
     }
 
     // --- 1. Consent + init -------------------------------------------------
@@ -182,6 +197,23 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * Loads a collapsible banner anchored at [position] (top or bottom) — it shows larger on the
+     * first impression and collapses to the anchored banner via the SDK's expand/collapse control.
+     */
+    private fun showCollapsibleBanner(position: BannerCollapsible) {
+        if (!ensureReady()) return
+        setStatus("Showing collapsible banner (${position.name.lowercase()})…")
+        BannerAdHelper.loadAdaptiveBanner(
+            activity = this,
+            container = bannerContainer,
+            adUnitId = BANNER_UNIT,
+            collapsible = position,
+            onLoaded = { setStatus("Collapsible banner shown ✓ (${position.name.lowercase()}) — tap the arrow to collapse") },
+            onFailed = { error -> setStatus("Collapsible banner failed: ${error.message}") },
+        )
+    }
+
     // --- 3. Native ---------------------------------------------------------
 
     private fun selectedTemplate(): NativeTemplate = when (templateGroup.checkedRadioButtonId) {
@@ -190,6 +222,9 @@ class MainActivity : AppCompatActivity() {
         R.id.rbBanner -> NativeTemplate.BANNER
         R.id.rbMediaLeft -> NativeTemplate.MEDIA_LEFT
         R.id.rbCollapsible -> NativeTemplate.COLLAPSIBLE
+        R.id.rbHero -> NativeTemplate.HERO
+        R.id.rbFeed -> NativeTemplate.FEED
+        R.id.rbSpotlight -> NativeTemplate.SPOTLIGHT
         else -> NativeTemplate.MEDIUM
     }
 
@@ -290,7 +325,7 @@ class MainActivity : AppCompatActivity() {
         counterClicks++
         // forceLoad = true: on a gated-in click with no cached ad, load one on demand (behind the
         // loading overlay) and show it rather than skipping — bounded by a 5s timeout.
-        val shown = helper.showFirstThenEvery(this, interval = 4, forceLoad = true, timeoutMs = 5_000L) {
+        val shown = helper.showFirstThenEvery(this, nth = 4, forceLoad = true, timeoutMs = 5_000L) {
             val load = if (helper.lastLoadMs >= 0) " · loaded in ${helper.lastLoadMs}ms" else ""
             setStatus("Interstitial dismissed ✓ (click #$counterClicks$load)")
         }
@@ -317,7 +352,7 @@ class MainActivity : AppCompatActivity() {
             setStatus("No rewarded ad ready — preload first")
             return
         }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short video to earn your reward?")
             .setPositiveButton("Watch") { _, _ ->
@@ -328,7 +363,7 @@ class MainActivity : AppCompatActivity() {
                     onReward = { reward ->
                         earned = true
                         setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
-                        AlertDialog.Builder(this)
+                        MaterialAlertDialogBuilder(this)
                             .setTitle("Reward earned 🎉")
                             .setMessage("You earned ${reward.amount} ${reward.type}.")
                             .setPositiveButton("OK", null)
@@ -359,7 +394,7 @@ class MainActivity : AppCompatActivity() {
             setStatus("No rewarded interstitial ready — preload first")
             return
         }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short ad to earn your reward?")
             .setPositiveButton("Watch") { _, _ ->
@@ -370,7 +405,7 @@ class MainActivity : AppCompatActivity() {
                     onReward = { reward ->
                         earned = true
                         setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
-                        AlertDialog.Builder(this)
+                        MaterialAlertDialogBuilder(this)
                             .setTitle("Reward earned 🎉")
                             .setMessage("You earned ${reward.amount} ${reward.type}.")
                             .setPositiveButton("OK", null)
@@ -411,6 +446,17 @@ class MainActivity : AppCompatActivity() {
 
     // --- helpers -----------------------------------------------------------
 
+    /**
+     * Flips [NextGenAds.premium]. Turning it on immediately purges every cached ad and hides the
+     * shown banner/native (via the library's runtime purge); no new ad is requested while premium.
+     */
+    private fun togglePremium(button: Button) {
+        val premium = !NextGenAds.premium
+        NextGenAds.premium = premium
+        button.text = if (premium) "Premium: ON (tap to allow ads)" else "Premium: OFF (tap to go ad-free)"
+        setStatus(if (premium) "Premium ON — all ads purged & hidden, none will load" else "Premium OFF — ads allowed again")
+    }
+
     private fun ensureReady(): Boolean {
         if (!NextGenAds.isInitialized()) {
             Toast.makeText(this, "Gather consent & initialize first", Toast.LENGTH_SHORT).show()
@@ -446,7 +492,8 @@ class MainActivity : AppCompatActivity() {
                     typeface = Typeface.MONOSPACE
                     setTypeface(typeface, if (header) Typeface.BOLD else Typeface.NORMAL)
                     textSize = 12f
-                    setTextColor(if (header) Color.parseColor("#111111") else Color.parseColor("#333333"))
+                    // Muted header, light body — legible and quiet on the dark strip.
+                    setTextColor(if (header) Color.parseColor("#969BA6") else Color.parseColor("#E3E5EA"))
                     val leftAligned = i < ShowRateTracker.LEFT_ALIGNED.size && ShowRateTracker.LEFT_ALIGNED[i]
                     gravity = if (leftAligned) Gravity.START else Gravity.END
                     setPadding(dp(10), dp(4), dp(10), dp(4))

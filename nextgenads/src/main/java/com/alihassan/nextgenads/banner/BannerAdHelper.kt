@@ -22,7 +22,20 @@ import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import java.util.ArrayDeque
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Where a collapsible banner's expanded overlay is anchored relative to the visible (collapsed) ad.
+ * [BOTTOM] expands upward from a bottom-anchored banner; [TOP] expands downward from a top-anchored
+ * one — pick the one matching where the banner sits on screen. Passed to
+ * [BannerAdHelper.loadAdaptiveBanner] to request a collapsible banner.
+ */
+enum class BannerCollapsible(internal val value: String) {
+    TOP("top"),
+    BOTTOM("bottom"),
+}
 
 /**
  * Loads anchored adaptive banners (Next-Gen SDK) into a container, showing a shimmer placeholder
@@ -30,6 +43,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Banners can also be [preload]ed: a detached [AdView] is loaded ahead of time and attached
  * instantly when the placement becomes visible — the same show-rate trick used for native ads.
+ *
+ * Pass a [BannerCollapsible] to [loadAdaptiveBanner] to request a **collapsible banner** — one that
+ * shows as a larger overlay on first impression and collapses to the anchored banner.
  */
 object BannerAdHelper {
 
@@ -37,6 +53,10 @@ object BannerAdHelper {
     private val pool = HashMap<String, ArrayDeque<CachedBanner>>()
     private val inFlight = HashMap<String, Int>()
     private val purgeHookInstalled = AtomicBoolean(false)
+    // Containers this helper has populated, held weakly so they can be cleared when ads are disabled
+    // (e.g. the user goes premium) without keeping the host view alive.
+    private val shownContainers: MutableSet<ViewGroup> =
+        Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
 
     /** A pooled detached banner plus its load timestamp, so stale inventory can be evicted. */
     private class CachedBanner(val adView: AdView, val loadedAtElapsed: Long)
@@ -114,6 +134,9 @@ object BannerAdHelper {
      * @param refill when `true`, re-warms the cache with a fresh request after consuming a preloaded
      *   banner. Defaults to `false` so that showing a preloaded banner issues **no** new request —
      *   call [preload] yourself when you want the next banner warmed.
+     * @param collapsible when non-null, requests a **collapsible** banner anchored at that edge.
+     *   Collapsible banners are always loaded fresh (the preload cache holds standard banners), so
+     *   [refill] has no effect for them.
      */
     @JvmStatic
     @JvmOverloads
@@ -122,6 +145,7 @@ object BannerAdHelper {
         container: ViewGroup,
         adUnitId: String,
         refill: Boolean = false,
+        collapsible: BannerCollapsible? = null,
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
     ) {
@@ -130,14 +154,16 @@ object BannerAdHelper {
             return
         }
 
-        // Fast path: attach a preloaded banner with no shimmer gap.
-        val cached = poll(adUnitId)
+        // Fast path: attach a preloaded banner with no shimmer gap. Skipped for collapsible requests,
+        // which must be loaded fresh so the SDK applies the collapsible overlay to this impression.
+        val cached = if (collapsible == null) poll(adUnitId) else null
         if (cached != null) {
             detachFromParent(cached)
             destroyBannerChildren(container) // release any banner this placement was showing before
             container.removeAllViews()
             container.addView(cached)
             container.visibility = View.VISIBLE
+            shownContainers.add(container)
             NextGenAds.log("Banner attached from cache: $adUnitId")
             onLoaded?.invoke()
             if (refill) preload(activity, adUnitId, 1)
@@ -161,6 +187,7 @@ object BannerAdHelper {
         container.addView(adView)
         container.addView(shimmer)
         container.visibility = View.VISIBLE
+        shownContainers.add(container)
         shimmer.startShimmer()
 
         val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
@@ -169,7 +196,7 @@ object BannerAdHelper {
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.
         NextGenAds.whenInitialized {
             loadBannerWithRetry(
-                adView, adUnitId, adSize, attempt = 0,
+                adView, adUnitId, adSize, attempt = 0, collapsible = collapsible,
                 onLoaded = { ad ->
                     shimmer.stopShimmer()
                     container.removeView(shimmer)
@@ -200,12 +227,13 @@ object BannerAdHelper {
         adUnitId: String,
         adSize: AdSize,
         attempt: Int,
+        collapsible: BannerCollapsible? = null,
         onLoaded: (BannerAd) -> Unit,
         onFailed: (LoadAdError) -> Unit,
     ) {
         NextGenAds.countRequest(AdFormat.BANNER, adUnitId)
         adView.loadAd(
-            BannerAdRequest.Builder(adUnitId, adSize).build(),
+            buildRequest(adUnitId, adSize, collapsible),
             object : AdLoadCallback<BannerAd> {
                 override fun onAdLoaded(ad: BannerAd) {
                     NextGenAds.runOnMain { onLoaded(ad) }
@@ -221,7 +249,12 @@ object BannerAdHelper {
                                     "${attempt + 1}/$maxRetries in ${delayMs}ms",
                             )
                             handler.postDelayed(
-                                { loadBannerWithRetry(adView, adUnitId, adSize, attempt + 1, onLoaded, onFailed) },
+                                {
+                                    loadBannerWithRetry(
+                                        adView, adUnitId, adSize, attempt + 1, collapsible,
+                                        onLoaded, onFailed,
+                                    )
+                                },
                                 delayMs,
                             )
                         } else {
@@ -232,6 +265,22 @@ object BannerAdHelper {
                 }
             },
         )
+    }
+
+    /**
+     * Builds a [BannerAdRequest], attaching the `"collapsible"` extra (`"top"` / `"bottom"`) when a
+     * [collapsible] position is requested so the SDK serves a collapsible banner for the placement.
+     */
+    private fun buildRequest(
+        adUnitId: String,
+        adSize: AdSize,
+        collapsible: BannerCollapsible?,
+    ): BannerAdRequest {
+        val builder = BannerAdRequest.Builder(adUnitId, adSize)
+        if (collapsible != null) {
+            builder.setGoogleExtrasBundle(Bundle().apply { putString("collapsible", collapsible.value) })
+        }
+        return builder.build()
     }
 
     /**
@@ -279,6 +328,25 @@ object BannerAdHelper {
 
     private fun detachFromParent(view: View) {
         (view.parent as? ViewGroup)?.removeView(view)
+    }
+
+    /**
+     * Destroys every pooled banner and hides/clears any banner currently shown in a container this
+     * helper populated — used when ads are disabled at runtime (e.g. the user goes premium).
+     */
+    @JvmStatic
+    fun clearAll() = NextGenAds.runOnMain {
+        synchronized(pool) {
+            pool.values.forEach { queue -> queue.forEach { it.adView.destroy() } }
+            pool.clear()
+        }
+        inFlight.clear()
+        shownContainers.toList().forEach { container ->
+            destroyBannerChildren(container)
+            container.removeAllViews()
+            container.visibility = View.GONE
+        }
+        shownContainers.clear()
     }
 
     /** Destroys any [AdView] children of [container] so a replaced banner isn't leaked. */

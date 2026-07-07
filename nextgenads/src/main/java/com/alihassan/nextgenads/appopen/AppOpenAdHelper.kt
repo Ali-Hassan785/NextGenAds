@@ -281,6 +281,19 @@ class AppOpenAdHelper(private val adUnitId: String) {
         return true
     }
 
+    /**
+     * Drops the cached ad and cancels any in-flight load / retry — used when ads are disabled at
+     * runtime (e.g. the user goes premium). A currently-showing ad is left to finish.
+     */
+    fun clear() = NextGenAds.runOnMain {
+        if (showing) return@runOnMain
+        handler.removeCallbacksAndMessages(null)
+        appOpenAd = null
+        loading = false
+        retryCount = 0
+        flushPending(false)
+    }
+
     companion object {
         /** App-open ads are valid for 4 hours after loading; a stale ad must be refetched. */
         const val AD_VALIDITY_MS = 4 * 60 * 60 * 1000L
@@ -299,6 +312,10 @@ object AppOpenAds {
     /** Convenience: preload an ad unit. */
     @JvmStatic
     fun preload(adUnitId: String) = get(adUnitId).load()
+
+    /** Drops every cached app-open ad across all units (e.g. on going premium / low memory). */
+    @JvmStatic
+    fun clearAll() = helpers.values.forEach { it.clear() }
 
     /** Convenience: request (if needed) and show [adUnitId] on demand, e.g. from a splash gate. */
     @JvmStatic

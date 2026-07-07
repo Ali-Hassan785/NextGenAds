@@ -7,8 +7,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import com.alihassan.nextgenads.appopen.AppOpenAds
+import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.events.AdEventListener
 import com.alihassan.nextgenads.events.AdFormat
+import com.alihassan.nextgenads.interstitial.Interstitials
+import com.alihassan.nextgenads.nativead.NativeAdHelper
+import com.alihassan.nextgenads.rewarded.RewardedAds
+import com.alihassan.nextgenads.rewardedinterstitial.RewardedInterstitials
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
 import com.google.android.libraries.ads.mobile.sdk.common.AdValue
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
@@ -17,6 +23,8 @@ import com.google.android.libraries.ads.mobile.sdk.common.RequestConfiguration
 import com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -36,6 +44,10 @@ object NextGenAds {
     @Volatile
     @JvmStatic
     var enabled: Boolean = true
+        set(value) {
+            field = value
+            applyAdsEnabledState()
+        }
 
     /** Toggle verbose logcat output. */
     @Volatile
@@ -49,10 +61,17 @@ object NextGenAds {
     @Volatile
     @JvmStatic
     var premium: Boolean = false
+        set(value) {
+            field = value
+            applyAdsEnabledState()
+        }
 
     /**
      * Optional dynamic premium check (e.g. read your billing repository). Evaluated on every ad
      * request; if it returns `true`, ads are suppressed. Defaults to always-false.
+     *
+     * Because this is evaluated lazily, changing what it returns doesn't auto-purge shown/cached
+     * ads — call [refreshPremiumState] after your billing state flips to apply it immediately.
      */
     @Volatile
     @JvmStatic
@@ -61,6 +80,65 @@ object NextGenAds {
     /** Single gate every helper consults: ads are allowed only when enabled and not premium. */
     @JvmStatic
     fun canShowAds(): Boolean = enabled && !premium && !premiumProvider()
+
+    // ---------------------------------------------------------------------------------------------
+    // Runtime premium purge
+    //
+    // Setting [premium] = true / [enabled] = false (or, for a dynamic [premiumProvider], calling
+    // [refreshPremiumState]) doesn't just stop *new* requests — it immediately drops every cached
+    // ad across all formats and hides any ad already on screen, so going premium mid-session removes
+    // ads at once and frees their memory. Nothing is requested again while premium.
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * A live, on-screen ad slot (banner / native view) that hides itself when ads are disabled.
+     * Registered while attached so a runtime switch to premium can clear it. Held weakly.
+     */
+    internal interface PremiumAware {
+        /** Invoked on the main thread when ads become disabled; hide/destroy any shown ad. */
+        fun onAdsDisabled()
+    }
+
+    private val adSlots: MutableSet<PremiumAware> =
+        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<PremiumAware, Boolean>()))
+
+    internal fun registerAdSlot(slot: PremiumAware) {
+        adSlots.add(slot)
+    }
+
+    internal fun unregisterAdSlot(slot: PremiumAware) {
+        adSlots.remove(slot)
+    }
+
+    /** When ads have just become disabled, purge everything; otherwise no-op. */
+    private fun applyAdsEnabledState() {
+        if (!canShowAds()) clearAllAds()
+    }
+
+    /**
+     * Re-applies the current premium/enabled state — call after a dynamic [premiumProvider] change
+     * so a mid-session purchase purges cached and on-screen ads right away.
+     */
+    @JvmStatic
+    fun refreshPremiumState() = applyAdsEnabledState()
+
+    /**
+     * Drops every format's cached inventory and hides any ad currently shown in a registered slot.
+     * Runs on the main thread. Safe to call anytime (e.g. logout / low memory), not only for premium.
+     */
+    @JvmStatic
+    fun clearAllAds() = runOnMain {
+        runCatching { Interstitials.clearAll() }
+        runCatching { RewardedAds.clearAll() }
+        runCatching { RewardedInterstitials.clearAll() }
+        runCatching { AppOpenAds.clearAll() }
+        runCatching { BannerAdHelper.clearAll() }
+        runCatching { NativeAdHelper.clear() }
+        // Hide any banner/native still on screen.
+        val slots = synchronized(adSlots) { adSlots.toList() }
+        slots.forEach { runCatching { it.onAdsDisabled() } }
+        log("clearAllAds: purged all caches and hid ${slots.size} live ad slot(s)")
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Full-screen exclusivity gate

@@ -1,9 +1,158 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.NextGen" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+
+    <!-- ============================================================
+         NextGen theme — calm neutral dark, one violet accent. Quiet by
+         default; emphasis is spent only where it guides the eye.
+         ============================================================ -->
+    <!-- Dark (not DayNight): the identity is committed dark, so every Material component —
+         dialogs, menus, ripples — must use the dark tonal palette even on a light-mode device. -->
+    <style name="Theme.NextGen.Deck" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/ng_violet</item>
+        <item name="colorOnPrimary">@color/ng_on_primary</item>
+        <item name="colorPrimaryContainer">@color/ng_violet_deep</item>
+        <item name="colorOnPrimaryContainer">@color/ng_text</item>
+        <item name="colorSecondary">@color/ng_violet</item>
+        <item name="colorOnSecondary">@color/ng_on_primary</item>
+
+        <item name="android:colorBackground">@color/ng_ink</item>
+        <item name="colorSurface">@color/ng_surface</item>
+        <item name="colorOnSurface">@color/ng_text</item>
+        <item name="colorOnSurfaceVariant">@color/ng_muted</item>
+        <item name="colorOutline">@color/ng_line</item>
+
+        <item name="android:textColorPrimary">@color/ng_text</item>
+        <item name="android:textColorSecondary">@color/ng_muted</item>
+        <item name="android:textColorHint">@color/ng_faint</item>
+
+        <item name="android:windowBackground">@color/ng_ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/ng_ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Every plain Button is a quiet ghost by default; primary CTAs opt in below. -->
+        <item name="materialButtonStyle">@style/Widget.NextGen.Button.Ghost</item>
+        <item name="radioButtonStyle">@style/Widget.NextGen.Radio</item>
+        <item name="colorControlNormal">@color/ng_muted</item>
+        <item name="colorControlActivated">@color/ng_violet_bright</item>
+
+        <!-- Reward / opt-in dialogs pick this up automatically via MaterialAlertDialogBuilder. -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.NextGen.Dialog</item>
     </style>
 
+    <!-- Both day & night resolve to the same committed deck identity (see values-night). -->
+    <style name="Base.Theme.NextGen" parent="Theme.NextGen.Deck" />
     <style name="Theme.NextGen" parent="Base.Theme.NextGen" />
+
+    <!-- Splash uses the flat ink window background. -->
+    <style name="Theme.NextGen.Splash">
+        <item name="android:windowBackground">@drawable/ng_splash_bg</item>
+    </style>
+
+    <!-- Empty bases so dotted style names don't implicitly inherit a missing parent. -->
+    <style name="Widget.NextGen" parent="" />
+    <style name="Text.NextGen" parent="" />
+
+    <!-- ===================== Surfaces ===================== -->
+
+    <style name="Widget.NextGen.Card">
+        <item name="android:background">@drawable/ng_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">20dp</item>
+    </style>
+
+    <!-- ===================== Buttons ===================== -->
+
+    <!-- Secondary — the default. Quiet neutral fill, no border, plain label. -->
+    <style name="Widget.NextGen.Button.Ghost" parent="Widget.Material3.Button.TonalButton">
+        <item name="backgroundTint">@color/ng_surface_alt</item>
+        <item name="android:textColor">@color/ng_text</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="rippleColor">#22FFFFFF</item>
+        <item name="cornerRadius">12dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="iconTint">@color/ng_muted</item>
+    </style>
+
+    <!-- Primary CTA — filled violet. One per section, at most. -->
+    <style name="Widget.NextGen.Button.Primary" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/ng_violet</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="rippleColor">#40FFFFFF</item>
+        <item name="cornerRadius">12dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:minHeight">50dp</item>
+        <item name="android:elevation">0dp</item>
+    </style>
+
+    <!-- ===================== Text roles ===================== -->
+
+    <style name="Text.NextGen.SectionTitle">
+        <item name="android:textColor">@color/ng_text</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Text.NextGen.Label">
+        <item name="android:textColor">@color/ng_muted</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="Text.NextGen.Hint">
+        <item name="android:textColor">@color/ng_muted</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+    </style>
+
+    <style name="Widget.NextGen.Radio" parent="Widget.Material3.CompoundButton.RadioButton">
+        <item name="android:textColor">@color/ng_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <!-- ===================== Dialogs ===================== -->
+
+    <style name="ThemeOverlay.NextGen.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/ng_surface</item>
+        <item name="colorOnSurface">@color/ng_text</item>
+        <item name="colorOnSurfaceVariant">#C9CBD6</item>
+        <item name="colorPrimary">@color/ng_violet_bright</item>
+        <item name="android:textColorPrimary">@color/ng_text</item>
+        <item name="android:textColorSecondary">#C9CBD6</item>
+        <item name="shapeAppearanceMediumComponent">@style/Shape.NextGen.Dialog</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/Text.NextGen.Dialog.Title</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.NextGen.Dialog.Button</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.NextGen.Dialog.Button.Muted</item>
+    </style>
+
+    <style name="Shape.NextGen.Dialog" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">20dp</item>
+    </style>
+
+    <style name="Text.NextGen.Dialog.Title" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textColor">@color/ng_text</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Widget.NextGen.Dialog.Button" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/ng_violet_bright</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Widget.NextGen.Dialog.Button.Muted" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/ng_muted</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
 </resources>

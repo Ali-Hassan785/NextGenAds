@@ -37,7 +37,9 @@ class SampleApp : Application() {
         // HideAppOpenAd or skipOn(...), e.g.:
         //   AppOpenAdManager.install(this, APP_OPEN_UNIT)
         //       .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
+        // Skip the splash so its interstitial is the only ad shown on open (no app-open competes).
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
+            .skipOn(SplashActivity::class.java)
     }
 
     companion object {

@@ -2,13 +2,14 @@
 
 A lightweight, premium Android ad-helper library that wraps Google's **Next-Gen Mobile Ads SDK**
 (`com.google.android.libraries.ads.mobile.sdk`) and the **User Messaging Platform (UMP)**. It gives
-you drop-in helpers for every common ad format with preloading, per-unit caching, GDPR consent, a
-global premium kill-switch, and five polished native-ad templates — tuned for **show rate** and
-**fill rate**.
+you drop-in helpers for every common ad format — banner, native, interstitial, rewarded, rewarded
+interstitial, app-open — with preloading, per-unit caching, retry/backoff, GDPR consent, a global
+premium kill-switch with runtime purge, nine native templates plus bring-your-own layouts, and a
+ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
 
-> All SDK callbacks are marshalled to the main thread, so you can safely touch UI from any helper
-> callback. The library is written in Kotlin with full `@JvmStatic` / `@JvmOverloads` annotations,
-> so it is fully usable from Java too.
+> All SDK callbacks are marshalled to the **main thread**, so you can touch UI from any callback. The
+> library is Kotlin with full `@JvmStatic` / `@JvmOverloads` annotations, so it's fully usable from
+> Java too.
 
 ---
 
@@ -20,6 +21,7 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 - [Quick start](#quick-start)
 - [Consent (UMP / GDPR)](#consent-ump--gdpr)
 - [Initialization](#initialization)
+- [Splash screen (splash interstitial)](#splash-screen-splash-interstitial)
 - [Banner ads](#banner-ads)
 - [Native ads](#native-ads)
 - [Interstitial ads](#interstitial-ads)
@@ -28,7 +30,6 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 - [App open ads](#app-open-ads)
 - [Premium / ad-free users](#premium--ad-free-users)
 - [Ad events (analytics & revenue)](#ad-events-analytics--revenue)
-- [Theming the native templates](#theming-the-native-templates)
 - [Show rate & fill rate tips](#show-rate--fill-rate-tips)
 - [Test ad unit IDs](#test-ad-unit-ids)
 - [ProGuard / R8](#proguard--r8)
@@ -41,20 +42,23 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 
 ## Features
 
-| Format | Helper | Preload | Caching | Notes |
-| --- | --- | --- | --- | --- |
-| Banner | `BannerAdHelper` | ✅ | ✅ per unit | Anchored adaptive banners + shimmer |
-| Native | `NativeAdHelper` / `BannerNativeView` | ✅ | ✅ per unit | 5 premium templates |
-| Interstitial | `Interstitials` | ✅ | ✅ per unit | Frequency cap + backoff retries |
+| Format | Entry point | Preload | Cache | Highlights |
+| --- | --- | :---: | :---: | --- |
+| Banner | `BannerAdHelper` | ✅ | ✅ per unit | Anchored adaptive + **collapsible** (top/bottom) + shimmer |
+| Native | `NativeAdHelper` / `BannerNativeView` | ✅ | ✅ per unit | **9 templates** + custom layouts + auto-shimmer |
+| Interstitial | `Interstitials` / `SplashAd` | ✅ | ✅ per unit | Frequency cap, counter gating, splash flow |
 | Rewarded | `RewardedAds` | ✅ | ✅ per unit | Reward callback |
 | Rewarded interstitial | `RewardedInterstitials` | ✅ | ✅ per unit | Reward callback |
-| App open | `AppOpenAds` / `AppOpenAdManager` | ✅ | ✅ per unit | 4h expiry + auto show on foreground |
+| App open | `AppOpenAds` / `AppOpenAdManager` | ✅ | ✅ per unit | 4 h expiry + auto-show on foreground |
 | Consent | `ConsentManager` | — | — | UMP GDPR flow |
 
-- **Global gating** — `NextGenAds.enabled` / `premium` / `premiumProvider` are honoured by every helper.
-- **Shimmer placeholders** while ads load.
+- **Premium-aware everywhere** — a single gate (`NextGenAds.canShowAds()`) is honoured by every
+  helper. Flipping to premium at runtime **purges caches and hides shown ads** (see [Premium](#premium--ad-free-users)).
+- **Optimized for show rate** — preload + per-unit cache, exponential-backoff retries, a shared
+  request circuit breaker, connectivity recovery, and stale-ad expiry across all formats.
+- **Shimmer placeholders** while ads load — hand-tuned for built-ins, **auto-generated** for custom layouts.
 - **Main-thread safety** — every ad callback is delivered on the main thread.
-- **Ad events** — one `AdEventListener` for all formats: load, impression, click, **paid-revenue** & reward (analytics / ROAS). See [Ad events](#ad-events-analytics--revenue).
+- **One analytics hook** — a single `AdEventListener` for all formats, including **paid-revenue** for ROAS.
 
 ---
 
@@ -67,15 +71,18 @@ global premium kill-switch, and five polished native-ad templates — tuned for 
 | Ads SDK | `ads-mobile-sdk` 1.2.1 (Next-Gen, beta) |
 | UMP | `user-messaging-platform` 4.0.0 |
 | Shimmer | `com.facebook.shimmer:shimmer` 0.5.0 |
+| Lifecycle | `androidx.lifecycle:lifecycle-process` 2.6.2 |
 
-The Ads SDK, UMP, and Shimmer are pulled in transitively (`api`) — you do **not** need to declare
-them yourself when consuming via JitPack or Maven.
+The Ads SDK, UMP, Shimmer and lifecycle-process are exposed transitively (`api`) — you don't declare
+them yourself when consuming the library.
 
 ---
 
 ## Installation
 
-### Via JitPack (recommended)
+### 1. Add the dependency
+
+**Via JitPack (recommended):**
 
 ```kotlin
 // settings.gradle.kts
@@ -94,7 +101,7 @@ dependencies {
 }
 ```
 
-### As a local module
+**Or as a local module:**
 
 ```kotlin
 // settings.gradle.kts
@@ -103,7 +110,7 @@ include(":app", ":nextgenads")
 dependencies { implementation(project(":nextgenads")) }
 ```
 
-### Manifest — add your AdMob app id
+### 2. Declare your AdMob app id in the manifest
 
 ```xml
 <application ...>
@@ -121,8 +128,10 @@ dependencies { implementation(project(":nextgenads")) }
 
 ## Quick start
 
+The whole lifecycle is: **gather consent → initialize → preload → show**.
+
 ```kotlin
-// 1. Gather consent, then initialize (e.g. on a splash screen).
+// 1. Gather consent, then initialize (ideally on a splash screen).
 val consent = ConsentManager.getInstance(this)
 consent.gatherConsent(this) {
     if (consent.canRequestAds) {
@@ -130,6 +139,7 @@ consent.gatherConsent(this) {
             // 2. Warm caches for a high show rate.
             NativeAdHelper.preload(NATIVE_UNIT, count = 2)
             Interstitials.preload(INTERSTITIAL_UNIT)
+            BannerAdHelper.preload(this, BANNER_UNIT)
         }
     }
 }
@@ -140,6 +150,8 @@ findViewById<BannerNativeView>(R.id.adView).load(adUnitId = NATIVE_UNIT)
 // 4. Show an interstitial at a transition.
 Interstitials.get(INTERSTITIAL_UNIT).show(this) { goToNextScreen() }
 ```
+
+Prefer a real splash gate? See [Splash screen](#splash-screen-splash-interstitial).
 
 ---
 
@@ -158,7 +170,7 @@ consent.gatherConsent(this) { error ->
     }
 }
 
-// Privacy options entry-point (e.g. from Settings):
+// Privacy options entry-point (e.g. from a Settings screen):
 if (consent.isPrivacyOptionsRequired) {
     consent.showPrivacyOptionsForm(this) { /* dismissed */ }
 }
@@ -171,8 +183,11 @@ treated as a test device and the EEA geography is forced so the form actually ap
 
 ```kotlin
 ConsentManager.getInstance(this, "33BE2250B43518CCDA7DE426D04EE231")
-    .gatherConsent(this) { /* form will show */ }
+    .gatherConsent(this, forceEea = true) { /* form will show */ }
 ```
+
+> Never ship a test-device hash or `forceEea = true` in a release build — guard them behind
+> `BuildConfig.DEBUG`.
 
 | Member | Description |
 | --- | --- |
@@ -180,7 +195,7 @@ ConsentManager.getInstance(this, "33BE2250B43518CCDA7DE426D04EE231")
 | `isPrivacyOptionsRequired: Boolean` | `true` when a "Privacy options" entry-point must be shown. |
 | `gatherConsent(activity, forceEea, onComplete)` | Updates consent info and shows the form if required. |
 | `showPrivacyOptionsForm(activity, onDismissed)` | Presents the privacy options form. |
-| `reset()` | Clears all consent state (testing). |
+| `reset()` | Clears all consent state (testing only). |
 
 ---
 
@@ -191,27 +206,77 @@ NextGenAds.initialize(
     context = this,
     appId = "ca-app-pub-XXXX~YYYY",
     testDeviceIds = listOf("YOUR_TEST_DEVICE_ID"),   // optional
-    onComplete = Runnable { /* runs on the main thread when ready */ },
-)
+) {
+    // Runs on the main thread once ready — a good place to start preloading.
+}
 ```
 
 Initialization runs off the main thread (as the Next-Gen SDK requires) and the callback is delivered
-on the main thread — a good place to start preloading. Calling `initialize` again after it has
-finished simply runs the callback immediately.
+on the main thread. Calling `initialize` again after it finishes simply runs the callback
+immediately. **Any load/preload issued before init completes is queued and replayed** once the SDK is
+ready — so you can preload eagerly without racing initialization.
 
 | Member | Description |
 | --- | --- |
 | `initialize(context, appId, testDeviceIds, onComplete)` | Initializes the SDK once. |
 | `isInitialized(): Boolean` | Whether initialization has completed. |
-| `enabled: Boolean` | Master kill-switch (default `true`). |
+| `enabled: Boolean` | Master kill-switch (default `true`). Setting `false` purges & hides all ads. |
 | `loggingEnabled: Boolean` | Verbose Logcat under tag `NextGenAds` (default `true`). |
-| `premium`, `premiumProvider`, `canShowAds()` | See [Premium](#premium--ad-free-users). |
+| `premium`, `premiumProvider`, `canShowAds()`, `clearAllAds()` | See [Premium](#premium--ad-free-users). |
+
+---
+
+## Splash screen (splash interstitial)
+
+`SplashAd` shows an interstitial while your splash is up, held for a **minimum delay** (branding is
+always visible) and bounded by a **timeout** (a slow or failed load can never trap the user).
+`onComplete` fires exactly once — after the ad is dismissed, or when it's skipped — so you just
+navigate onward there. **Exactly one interstitial is requested on open.**
+
+```kotlin
+class SplashActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_splash)
+
+        // Gather consent + initialize first, then run the splash ad.
+        val consent = ConsentManager.getInstance(this)
+        val start = {
+            NextGenAds.initialize(this, APP_ID) {
+                SplashAd.show(
+                    activity = this,
+                    adUnitId = INTERSTITIAL_UNIT,
+                    minDelayMs = 1_500L,   // keep the splash up at least this long
+                    timeoutMs = 8_000L,    // give up waiting for the ad after this (coerced ≥ minDelayMs)
+                ) {
+                    startActivity(Intent(this, MainActivity::class.java))
+                    finish()
+                }
+            }
+        }
+        if (consent.canRequestAds) start() else consent.gatherConsent(this) { start() }
+    }
+}
+```
+
+Behaviour, at a glance:
+
+| Situation | What happens |
+| --- | --- |
+| Ad loads fast | Wait out `minDelayMs`, show it, `onComplete` on dismiss. |
+| Ad loads slowly | Shown as soon as it lands (past `minDelayMs`), up to `timeoutMs`. |
+| Ad never loads | `onComplete` fires at `timeoutMs`; the in-flight load keeps warming the cache. |
+| Ads disabled / premium | `onComplete` fires after `minDelayMs`; no request is made. |
+
+If you also use `AppOpenAdManager`, skip the splash so an app-open ad doesn't compete with the splash
+interstitial: `AppOpenAdManager.install(...).skipOn(SplashActivity::class.java)`.
 
 ---
 
 ## Banner ads
 
-Anchored adaptive banners with a shimmer placeholder and optional preloading.
+Anchored adaptive banners with a shimmer placeholder and optional preloading. The container is
+**collapsed** on no-fill so no empty gap is left behind.
 
 ```kotlin
 // Preload (e.g. right after init):
@@ -230,14 +295,36 @@ BannerAdHelper.loadAdaptiveBanner(
 | Member | Default | Description |
 | --- | --- | --- |
 | `maxCachePerUnit` | `2` | Max preloaded banners cached per ad unit. |
-| `preload(activity, adUnitId, count)` | `count = 1` | Warms the cache. |
-| `loadAdaptiveBanner(activity, container, adUnitId, refill, onLoaded, onFailed)` | `refill = true` | Shows a banner; collapses the container on no-fill. |
+| `maxRetries` | `2` | Reload attempts after a failed load (backoff 1s/2s/4s). |
+| `preload(activity, adUnitId, count, widthDp)` | `count = 1` | Warms the cache. |
+| `loadAdaptiveBanner(activity, container, adUnitId, refill, collapsible, onLoaded, onFailed)` | `refill = false` | Shows a banner. |
+| `clearAll()` | — | Destroys the pool and hides banners in populated containers. |
+
+### Collapsible banners
+
+Pass a `BannerCollapsible` to request a **collapsible banner** — it shows as a larger overlay on the
+first impression and collapses to the anchored banner (the SDK provides the expand/collapse control).
+Anchor it at the edge where the banner actually sits on screen:
+
+```kotlin
+BannerAdHelper.loadAdaptiveBanner(
+    activity = this,
+    container = findViewById(R.id.bannerContainer),   // pin the container to that edge
+    adUnitId = BANNER_UNIT,
+    collapsible = BannerCollapsible.BOTTOM,            // or BannerCollapsible.TOP
+    onLoaded = { /* shown */ },
+    onFailed = { error -> /* no fill */ },
+)
+```
+
+Collapsible requests always load fresh (the preload cache holds standard banners), so `refill` has no
+effect for them.
 
 ---
 
 ## Native ads
 
-There are two ways to render native ads.
+Two ways to render native ads: a drop-in XML view, or the lower-level helper + template view.
 
 ### 1. `BannerNativeView` — one drop-in view (banner **or** native)
 
@@ -268,7 +355,9 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `app:ngad_ad_type` | `banner`, `nativead` | `nativead` |
-| `app:ngad_template` | `small`, `medium`, `large`, `banner`, `media_left`, `collapsible` | `medium` |
+| `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `feed`, `spotlight` | `medium` |
+| `app:ngad_customLayout` | a `@layout` reference (overrides `ngad_template`) | — |
+| `app:ngad_customShimmer` | a `@layout` reference (else auto-generated) | — |
 
 ### 2. `NativeAdHelper` + `NativeTemplateView` (lower level)
 
@@ -276,8 +365,8 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 // Preload into the per-unit cache:
 NativeAdHelper.preload(NATIVE_UNIT, count = 2)
 
-// Bind into a template view (shimmer until ready, cache-first, auto-refill):
-NativeAdHelper.populate(templateView, NATIVE_UNIT)
+// Bind into a template view (shimmer until ready, cache-first). refill re-warms the cache:
+NativeAdHelper.populate(templateView, NATIVE_UNIT, refill = true)
 
 // Or get the raw ad:
 NativeAdHelper.load(NATIVE_UNIT, onLoaded = { ad -> /* … */ })
@@ -286,7 +375,7 @@ NativeAdHelper.load(NATIVE_UNIT, onLoaded = { ad -> /* … */ })
 NativeAdHelper.clear(NATIVE_UNIT)   // or clear() for all units
 ```
 
-### The six templates
+### Built-in templates
 
 | Template | Layout |
 | --- | --- |
@@ -296,9 +385,97 @@ NativeAdHelper.clear(NATIVE_UNIT)   // or clear() for all units
 | `BANNER` | Single-line strip that mimics a banner footer (no media). |
 | `MEDIA_LEFT` | Media on the left, headline + body top-right, CTA bottom-right. |
 | `COLLAPSIBLE` | Media on top with a down-arrow control that collapses the media into a compact ad. |
+| `HERO` | Cinematic full-width media up top with the "Ad" badge overlaid, then icon + headline, body and a bold CTA. |
+| `FEED` | Sponsored-post styling (icon + advertiser header, headline, media, body, CTA) for content feeds. |
+| `SPOTLIGHT` | Centred composition (icon, headline, rating, body, media, CTA) for dialogs / empty states. |
 
-All templates use rounded, clipped media, a ripple CTA, an "Ad" attribution badge, and
-high-quality Roboto typography.
+Select any by name from XML (`app:ngad_template="hero"`) or in code (`NativeTemplate.HERO`). All
+templates use rounded, clipped media, a ripple CTA, an "Ad" attribution badge and Roboto typography.
+The three creative templates (`HERO`, `FEED`, `SPOTLIGHT`) ship no shimmer XML — one is
+auto-generated.
+
+### Your own custom template
+
+Supply your **own layout** and the same shimmer / cache / tracking pipeline drives it. Two ways,
+depending on how much control you want.
+
+**A. ID-contract (no code)** — make the layout's root a `NativeAdView` and give the asset views the
+library IDs below. Binding, asset registration and click/impression tracking are then automatic.
+
+```xml
+<!-- res/layout/my_native.xml -->
+<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView ...>
+    <ImageView android:id="@+id/ngad_icon" ... />
+    <TextView  android:id="@+id/ngad_headline" ... />
+    <TextView  android:id="@+id/ngad_body" ... />
+    <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
+        android:id="@+id/ngad_media" ... />
+    <TextView  android:id="@+id/ngad_cta" ... />
+</com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView>
+```
+
+Recognised IDs (include only the ones you want): `ngad_headline`, `ngad_body`, `ngad_cta`,
+`ngad_icon`, `ngad_advertiser`, `ngad_stars`, `ngad_media`, `ngad_collapse`.
+
+Point a view at it — from XML (overrides `app:ngad_template`) or in code:
+
+```xml
+<com.alihassan.nextgenads.nativead.NativeTemplateView
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:ngad_customLayout="@layout/my_native" />   <!-- shimmer auto-generated -->
+```
+```kotlin
+templateView.setCustomTemplate(R.layout.my_native)   // shimmer auto-generated from the layout
+NativeAdHelper.populate(templateView, NATIVE_UNIT)
+```
+
+**B. Custom binder (full control)** — for a layout with arbitrary IDs, bind the assets yourself; you
+are then responsible for registering them and calling `registerNativeAd`:
+
+```kotlin
+templateView.setCustomTemplate(R.layout.my_native) { adView, ad ->
+    val title = adView.findViewById<TextView>(R.id.my_title)
+    title.text = ad.headline
+    adView.headlineView = title
+    val media = adView.findViewById<MediaView>(R.id.my_media)
+    media.imageScaleType = ImageView.ScaleType.CENTER_CROP
+    adView.registerNativeAd(ad, media)
+}
+```
+
+**Auto-generated shimmer** — you don't have to design a shimmer per template. Omit
+`app:ngad_customShimmer` / the `shimmer` argument and `NativeTemplateView` builds one from your
+layout (`ShimmerSkeleton`): each content view becomes a rounded grey block and the shimmer sweep is
+animated, matching the real layout's shape. Pass `autoShimmer = false` to show no placeholder. You
+can also call `ShimmerSkeleton.fromLayout(context, R.layout.my_native)` directly.
+
+**Media scaling** — media fills its `MediaView` via `NativeTemplateView.mediaScaleType` (default
+`ImageView.ScaleType.CENTER_CROP`), so a creative whose aspect ratio differs from the slot fills it
+instead of letterboxing and exposing the view's background as grey bars. Set `FIT_CENTER` to show
+the whole creative (in a custom binder, set `mediaView.imageScaleType` yourself).
+
+### Theming
+
+Override any of these colors in your app's `colors.xml` to re-theme **every** template at once (same
+resource names win at merge time):
+
+```xml
+<color name="ngad_surface">#FFFFFFFF</color>       <!-- card background -->
+<color name="ngad_stroke">#FFEDEFF3</color>        <!-- card border -->
+<color name="ngad_headline">#FF0B0E14</color>      <!-- headline text -->
+<color name="ngad_body">#FF5E6470</color>          <!-- body / advertiser text -->
+<color name="ngad_cta">#FF2563EB</color>           <!-- CTA fill -->
+<color name="ngad_cta_text">#FFFFFFFF</color>      <!-- CTA text -->
+<color name="ngad_cta_ripple">#52FFFFFF</color>    <!-- CTA touch ripple -->
+<color name="ngad_ad_badge">#FFFFC861</color>      <!-- "Ad" badge fill -->
+<color name="ngad_ad_badge_text">#FF5A4500</color>
+<color name="ngad_media_bg">#FFEFF2F7</color>      <!-- media placeholder -->
+<color name="ngad_shimmer_block">#FFE9ECF1</color>
+```
+
+Custom layouts still get the cache, retry/backoff, expiry and error-collapse behaviour of the
+built-in templates.
 
 ---
 
@@ -309,45 +486,49 @@ high-quality Roboto typography.
 Interstitials.preload(INTERSTITIAL_UNIT)
 
 // Show — onDismiss is always called (immediately if no ad was ready):
-Interstitials.get(INTERSTITIAL_UNIT).show(this) {
-    goToNextScreen()
-}
+Interstitials.get(INTERSTITIAL_UNIT).show(this) { goToNextScreen() }
+
+// Load on demand and show as soon as it's ready (bounded by a timeout):
+Interstitials.loadAndShow(this, INTERSTITIAL_UNIT, timeoutMs = 5_000L) { goToNextScreen() }
 
 // Tune behaviour:
 val helper = Interstitials.get(INTERSTITIAL_UNIT)
-helper.maxRetries = 3          // exponential backoff on load failure (1s, 2s, 4s …)
-helper.minIntervalMs = 60_000  // frequency cap; 0 disables
-helper.adValidityMs = 55 * 60_000L // cached-ad expiry; stale ads are dropped, never shown
-helper.autoReload = true       // request the next ad automatically after each dismissal
-val ready = helper.isReady     // non-expired ad cached
-val onScreen = helper.isShowing
+helper.maxRetries = 3               // exponential backoff on load failure (1s, 2s, 4s …)
+helper.minIntervalMs = 60_000       // frequency cap; 0 disables
+helper.adValidityMs = 55 * 60_000L  // cached-ad expiry; stale ads are dropped, never shown
+helper.autoReload = true            // request the next ad automatically after each dismissal
+helper.loadingOverlayMs = 1_000L    // brief "Loading ad…" interlude before the ad opens; 0 to disable
+val ready = helper.isReady          // non-expired ad cached
 ```
 
 Cached interstitials expire after ~1 hour on AdMob's side; the helper drops a stale ad instead of
-burning the show on an "ad expired" failure. With `autoReload = true` a fresh ad is requested
-automatically after each dismissal; leave it off (default) to control every request yourself via
-`preload`. Only one full-screen ad (any format) can ever be on screen at a time — a `show()` while
-another is presenting is refused and the ad stays cached (see `NextGenAds.isFullScreenAdShowing()`).
+burning the show on an "ad expired" failure. Only one full-screen ad (any format) can be on screen at
+a time — a `show()` while another is presenting is refused and the ad stays cached (see
+`NextGenAds.isFullScreenAdShowing()`).
 
-### Show on every Nth call (counter)
+### Counter-gated shows
 
-For the common "show an interstitial every few transitions" pattern, use `showOnCount` instead of
-tracking a counter yourself. It increments an app-wide counter for that ad unit (helpers are shared)
-and only shows on every Nth call; `onDismiss` still fires on the in-between calls so your flow stays
-uniform:
+Show on every Nth trigger without tracking a counter yourself. The counter is app-wide per unit;
+`onDismiss` still fires on the in-between calls so your flow stays uniform.
 
 ```kotlin
-// Show an ad on every 3rd level completion (1st and 2nd just continue):
-Interstitials.showOnCount(this, INTERSTITIAL_UNIT, every = 3) {
-    startNextLevel()
-}
+// Show on the 3rd, 6th, 9th … call:
+Interstitials.showEvery(this, INTERSTITIAL_UNIT, nth = 3) { startNextLevel() }
+
+// Show on the 1st call, then every 4th after (1, 5, 9, 13 …):
+Interstitials.showFirstThenEvery(this, INTERSTITIAL_UNIT, nth = 4) { startNextLevel() }
 
 // Reset the counter (e.g. on a new session):
-Interstitials.get(INTERSTITIAL_UNIT).resetCounter()
+Interstitials.get(INTERSTITIAL_UNIT).resetTriggerCount()
 ```
 
-The readiness check and `minIntervalMs` cap still apply, so a counted call skips showing if no ad is
-ready yet.
+Both accept `forceLoad = true` to load on demand (bounded by `timeoutMs`) when the gate opens with no
+cached ad, instead of skipping.
+
+### Splash interstitial
+
+For the app-startup case, use [`SplashAd`](#splash-screen-splash-interstitial) — it adds the minimum
+delay + timeout coordination a splash needs.
 
 ---
 
@@ -399,27 +580,25 @@ RewardedInterstitials.get(REWARDED_INT_UNIT).show(
 Full-screen ads shown while the user brings the app to the foreground. App-open ads expire 4 hours
 after loading — the helper tracks this and silently refetches a stale ad rather than showing it.
 
-### Auto show on foreground (recommended)
+### Auto-show on foreground (recommended)
 
-`AppOpenAdManager` wires itself to the process lifecycle and shows an ad each time the app returns
-to the foreground. Install it once, after `initialize`:
+`AppOpenAdManager` wires itself to the process lifecycle and shows an ad each time the app returns to
+the foreground. Install it once, in `Application.onCreate()`:
 
 ```kotlin
-// In Application.onCreate(), after NextGenAds.initialize(...):
 AppOpenAdManager.install(this, APP_OPEN_UNIT)
-    .skipOn(SplashActivity::class.java) // never cover these screens
+    .skipOn(SplashActivity::class.java)   // never cover these screens
 ```
 
 On a genuine background→foreground transition a cached (non-expired) ad shows instantly. If none is
 cached, one is requested at that moment and shown only when it loads within `loadTimeoutMs`
-(default 5 s) while the app is still in the foreground — an ad that arrives later is **never**
-popped over app content mid-session; it stays cached so the *next* return shows instantly.
+(default 5 s) while the app is still foregrounded — an ad that arrives later is **never** popped over
+app content mid-session; it stays cached so the *next* return shows instantly.
 
-The first foreground after a cold start is skipped by default (the ad usually isn't ready yet and
-showing one over your splash hurts UX) — set `showOnColdStart = true` to opt in. Pause auto-showing
-at any time with `AppOpenAdManager.get()?.enabled = false`; the premium / kill-switch gate in
-`NextGenAds` is always honoured. Activities implementing `HideAppOpenAd` (or registered via
-`skipOn`) are never covered, and an app-open never stacks on another full-screen ad.
+The first foreground after a cold start is skipped by default — set `showOnColdStart = true` to opt
+in. Pause auto-showing with `AppOpenAdManager.get()?.enabled = false`. Activities implementing
+`HideAppOpenAd` (or registered via `skipOn`) are never covered, and an app-open never stacks on
+another full-screen ad.
 
 ### Manual control
 
@@ -441,7 +620,8 @@ AppOpenAds.get(APP_OPEN_UNIT).show(activity) { proceed() }
 
 ## Premium / ad-free users
 
-Every helper consults a single gate: `NextGenAds.canShowAds() == enabled && !premium && !premiumProvider()`.
+Every helper consults a single gate:
+`NextGenAds.canShowAds() == enabled && !premium && !premiumProvider()`.
 
 ```kotlin
 // Static flag:
@@ -449,12 +629,22 @@ NextGenAds.premium = user.hasActiveSubscription
 
 // Or dynamic (evaluated on every ad request):
 NextGenAds.premiumProvider = { billingRepository.isPremium() }
+NextGenAds.refreshPremiumState()   // apply a premiumProvider change right now
 
 // Or disable all ads entirely:
 NextGenAds.enabled = false
 ```
 
-While suppressed, no ad is requested or shown, and `BannerNativeView` hides itself automatically.
+**Runtime purge.** Setting `premium = true` (or `enabled = false`) doesn't just stop *new* requests —
+it immediately **drops every format's cached ad and hides any banner/native already on screen**, so a
+mid-session purchase removes ads at once and frees their memory. Nothing is requested again while
+premium.
+
+- `BannerNativeView` and `NativeTemplateView` register themselves while attached and hide on purge.
+- Banners shown via `BannerAdHelper.loadAdaptiveBanner` are cleared from their containers.
+- Because `premiumProvider` is evaluated lazily, call `NextGenAds.refreshPremiumState()` after your
+  billing state flips so the purge runs.
+- Trigger the purge directly anytime (logout, low memory) with `NextGenAds.clearAllAds()`.
 
 ---
 
@@ -463,11 +653,9 @@ While suppressed, no ad is requested or shown, and `BannerNativeView` hides itse
 Register a single `AdEventListener` once and receive **every** ad lifecycle event from **every**
 format — load, show, dismiss, impression, click, paid-revenue and reward — without threading
 callbacks through each call site. This is the recommended hook for analytics and ROAS / ad-revenue
-measurement. The per-call callbacks (`onResult`, `onDismiss`, `onReward`, …) still fire as before;
-events are additive.
+measurement. Per-call callbacks (`onDismiss`, `onReward`, …) still fire; events are additive.
 
-All callbacks are delivered on the **main thread**, and one listener throwing never stops the others
-from being notified.
+All callbacks are delivered on the **main thread**, and one listener throwing never stops the others.
 
 ```kotlin
 NextGenAds.registerEventListener(object : AdEventListener {
@@ -487,7 +675,6 @@ NextGenAds.registerEventListener(object : AdEventListener {
             putString(FirebaseAnalytics.Param.AD_UNIT_NAME, adUnitId)
             putDouble(FirebaseAnalytics.Param.VALUE, value.valueMicros / 1_000_000.0)
             putString(FirebaseAnalytics.Param.CURRENCY, value.currencyCode)
-            // responseInfo carries the winning mediation ad source for richer attribution.
             responseInfo?.loadedAdSourceResponseInfo?.name?.let {
                 putString(FirebaseAnalytics.Param.AD_SOURCE, it)
             }
@@ -500,7 +687,7 @@ NextGenAds.registerEventListener(object : AdEventListener {
 })
 ```
 
-Every method has a no-op default, so implement only the ones you need. Call
+Every method has a no-op default, so implement only what you need. Call
 `NextGenAds.unregisterEventListener(listener)` to stop receiving events.
 
 | Event | Banner | Native | Interstitial | Rewarded | Rewarded-int. | App-open |
@@ -515,52 +702,17 @@ Every method has a no-op default, so implement only the ones you need. Call
 
 ---
 
-## Theming the native templates
-
-Override any of these colors in your app's `colors.xml` to re-theme **every** template at once
-(same resource names win at merge time):
-
-```xml
-<color name="ngad_surface">#FFFFFFFF</color>      <!-- card background -->
-<color name="ngad_stroke">#FFEDEFF3</color>       <!-- card border -->
-<color name="ngad_headline">#FF0B0E14</color>     <!-- headline text -->
-<color name="ngad_body">#FF5E6470</color>         <!-- body / advertiser text -->
-<color name="ngad_cta">#FF2563EB</color>          <!-- CTA fill -->
-<color name="ngad_cta_text">#FFFFFFFF</color>     <!-- CTA text -->
-<color name="ngad_cta_ripple">#52FFFFFF</color>   <!-- CTA touch ripple -->
-<color name="ngad_ad_badge">#FFFFC861</color>     <!-- "Ad" badge fill -->
-<color name="ngad_ad_badge_text">#FF5A4500</color>
-<color name="ngad_media_bg">#FFEFF2F7</color>     <!-- media placeholder -->
-<color name="ngad_shimmer_block">#FFE9ECF1</color>
-```
-
-### Custom layouts
-
-To supply your own native layout, root it in
-`com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView` and use these view ids so the
-library can bind the assets:
-
-| View id | Type | Asset |
-| --- | --- | --- |
-| `@id/ngad_headline` | `TextView` | Headline (required) |
-| `@id/ngad_body` | `TextView` | Body |
-| `@id/ngad_cta` | `TextView` / `Button` | Call to action |
-| `@id/ngad_icon` | `ImageView` | App / brand icon |
-| `@id/ngad_advertiser` | `TextView` | Advertiser |
-| `@id/ngad_stars` | `RatingBar` | Star rating |
-| `@id/ngad_media` | `MediaView` | Media (image/video) — optional |
-
----
-
 ## Show rate & fill rate tips
 
 - **Preload** every format right after `initialize` completes. Pass `refill = true` to
   `populate` / `loadAdaptiveBanner` (or set `autoReload = true` on full-screen helpers) so consuming
   a cached ad automatically warms the next one.
-- Cached ads **expire** (~1 h for interstitial/rewarded/native/banner, 4 h for app-open). The
-  helpers drop stale inventory instead of failing the show — tune via each helper's `adValidityMs`.
+- Cached ads **expire** (~1 h for interstitial/rewarded/native/banner, 4 h for app-open). The helpers
+  drop stale inventory instead of failing the show — tune via each helper's `adValidityMs`.
 - Keep `BannerNativeView` / `NativeTemplateView` instances around and rebind, rather than recreating.
 - Bump `NativeAdHelper.maxCachePerUnit` / `BannerAdHelper.maxCachePerUnit` for high-traffic screens.
+- On a flaky connection the shared **circuit breaker** pauses new requests briefly (cached ads still
+  show) and auto-resumes; connectivity recovery re-enables requests when the network returns.
 - **Fill rate is mostly server-side**: configure **mediation** in the AdMob console and use real ad
   unit ids. Test ids always fill but only with test creatives.
 - Don't gate requests behind slow remote-config reads on the critical path — cache the flag.
@@ -586,8 +738,8 @@ Google's official test ids (safe during development — replace before release):
 ## ProGuard / R8
 
 No extra configuration is needed in your app: the library's public API survives R8 through normal
-reference-based keep analysis, and the Next-Gen Ads SDK, UMP and Shimmer all bring their own
-consumer keep rules.
+reference-based keep analysis, and the Next-Gen Ads SDK, UMP and Shimmer bring their own consumer
+keep rules.
 
 ---
 
@@ -596,9 +748,11 @@ consumer keep rules.
 | Symptom | Cause / fix |
 | --- | --- |
 | **Consent never gathers / "Ads not allowed"** | Missing `com.google.android.gms.ads.APPLICATION_ID` meta-data in the app manifest, or no GDPR message published in the AdMob console. |
-| **Consent form never appears** | Expected outside the EEA. To test, pass your test-device hash to `ConsentManager.getInstance`. |
-| **`Animators may only be run on Looper threads`** | Fixed in this library — all callbacks run on the main thread. If you see it, you're touching shimmer off the main thread in your own code. |
+| **Consent form never appears** | Expected outside the EEA. To test, pass your test-device hash to `ConsentManager.getInstance` and `forceEea = true`. |
 | **No ads show with test ids** | Make sure `NextGenAds.initialize` finished (`isInitialized()`), and that `premium`/`enabled` aren't suppressing ads. |
+| **Native media has grey side/top bars** | The creative's aspect ratio differs from the slot. `mediaScaleType` defaults to `CENTER_CROP` to fill it; keep it, or use `FIT_CENTER` to show the whole creative with bars. |
+| **Splash never proceeds** | `SplashAd.onComplete` always fires by `timeoutMs`; ensure you call `initialize` first and that your navigation runs in `onComplete`. |
+| **`Animators may only be run on Looper threads`** | Not from this library — all callbacks run on the main thread. Check you aren't touching shimmer off the main thread in your own code. |
 | **JitPack build fails** | Bleeding-edge AGP/SDK — try `openjdk21` in `jitpack.yml`, or distribute the AAR directly. |
 
 ---
@@ -607,22 +761,26 @@ consumer keep rules.
 
 ```
 com.alihassan.nextgenads
-├── NextGenAds                         // initialize, enabled, premium, canShowAds, isInitialized,
-│                                      //   registerEventListener / unregisterEventListener
-├── BannerNativeView                   // drop-in banner/native View
-├── AdType                             // BANNER, NATIVE
-├── events.AdEventListener             // app-wide ad events (load/impression/click/paid/reward)
-├── events.AdFormat                    // BANNER, NATIVE, INTERSTITIAL, REWARDED, REWARDED_INTERSTITIAL, APP_OPEN
-├── consent.ConsentManager             // UMP consent
-├── banner.BannerAdHelper              // adaptive banners
-├── nativead.NativeAdHelper            // native loading + cache
-├── nativead.NativeTemplate            // SMALL, MEDIUM, LARGE, BANNER, MEDIA_LEFT, COLLAPSIBLE
-├── nativead.NativeTemplateView        // renders a NativeTemplate
-├── interstitial.Interstitials         // registry  → InterstitialAdHelper
-├── rewarded.RewardedAds               // registry  → RewardedAdHelper
+├── NextGenAds                          // initialize, enabled, premium, premiumProvider,
+│                                       //   canShowAds, refreshPremiumState, clearAllAds,
+│                                       //   isInitialized, register/unregisterEventListener
+├── BannerNativeView                    // drop-in banner/native View (premium-aware)
+├── AdType                              // BANNER, NATIVE
+├── events.AdEventListener              // app-wide ad events (load/impression/click/paid/reward)
+├── events.AdFormat                     // BANNER, NATIVE, INTERSTITIAL, REWARDED, REWARDED_INTERSTITIAL, APP_OPEN
+├── consent.ConsentManager              // UMP consent
+├── banner.BannerAdHelper               // adaptive + collapsible banners, clearAll()
+├── banner.BannerCollapsible            // TOP, BOTTOM
+├── nativead.NativeAdHelper             // native loading + cache, clear()
+├── nativead.NativeTemplate             // SMALL, MEDIUM, LARGE, BANNER, MEDIA_LEFT, COLLAPSIBLE, HERO, FEED, SPOTLIGHT
+├── nativead.NativeTemplateView         // renders a NativeTemplate or a custom layout (setCustomTemplate)
+├── nativead.ShimmerSkeleton            // fromLayout(context, layout) → auto shimmer
+├── interstitial.Interstitials          // registry → InterstitialAdHelper (showEvery / showFirstThenEvery)
+├── interstitial.SplashAd               // splash interstitial (min delay + timeout)
+├── rewarded.RewardedAds                // registry → RewardedAdHelper
 ├── rewardedinterstitial.RewardedInterstitials  // registry → RewardedInterstitialAdHelper
-├── appopen.AppOpenAds                  // registry  → AppOpenAdHelper
-└── appopen.AppOpenAdManager            // auto show on foreground (process lifecycle)
+├── appopen.AppOpenAds                  // registry → AppOpenAdHelper
+└── appopen.AppOpenAdManager            // auto-show on foreground (process lifecycle), skipOn(...)
 ```
 
 Full KDoc is available on every public class and member in the source.
