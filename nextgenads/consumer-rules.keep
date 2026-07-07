@@ -1,0 +1,32 @@
+# NextGenAds — consumer ProGuard/R8 rules.
+# Shipped to every app that depends on this library (via consumerProguardFiles in build.gradle.kts),
+# so they apply automatically to the consuming app's R8/minified release build.
+#
+# Why these exist: native templates inflate the Next-Gen SDK's NativeAdView / MediaView **by class
+# name from XML layouts**. Unlike banner's AdView (created in Kotlin and always reachable for R8), an
+# XML-only view can be stripped or renamed when the consuming app enables minification — causing an
+# InflateException at runtime, after which the native slot silently hides. These rules keep the
+# XML-inflated view classes (and their inflation constructors) intact.
+
+# --- Next-Gen Ads SDK views inflated from XML by the native templates ---
+-keep class com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView { *; }
+-keep class com.google.android.libraries.ads.mobile.sdk.nativead.MediaView { *; }
+
+# --- Library views inflated from XML / referenced by host layouts ---
+-keep class com.alihassan.nextgenads.BannerNativeView { *; }
+-keep class com.alihassan.nextgenads.nativead.NativeTemplateView { *; }
+
+# Keep the View inflation constructors for every custom View used from XML.
+-keepclassmembers class * extends android.view.View {
+    public <init>(android.content.Context);
+    public <init>(android.content.Context, android.util.AttributeSet);
+    public <init>(android.content.Context, android.util.AttributeSet, int);
+}
+
+# --- AdMob mediation ---
+# Mediation adapters (a fix for native no-fill) are loaded reflectively by class name, so R8 must not
+# strip or rename them. These are no-ops unless the host app actually includes the GMA SDK / an
+# AdMob mediation adapter, so they are safe to ship for everyone.
+-keep class com.google.android.gms.ads.** { *; }
+-keep public class com.google.android.gms.ads.mediation.MediationExtras { *; }
+-keep class com.google.ads.mediation.** { *; }

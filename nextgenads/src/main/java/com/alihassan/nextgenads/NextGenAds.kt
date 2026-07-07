@@ -467,6 +467,12 @@ object NextGenAds {
     }
 
     internal fun dispatchFailedToLoad(format: AdFormat, adUnitId: String, error: LoadAdError) {
+        // Spell out the reason so no-fill vs invalid-request vs network is obvious in logcat.
+        // (Next-Gen LoadAdError exposes code/message/responseInfo; there is no domain/cause.)
+        log(
+            "$format failed to load ($adUnitId): code=${error.code} message=${error.message} " +
+                "response=${error.responseInfo}",
+        )
         recordRequestFailure(error)
         dispatch { it.onAdFailedToLoad(format, adUnitId, error) }
     }

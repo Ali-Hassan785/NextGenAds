@@ -57,8 +57,14 @@ All notable changes to this project are documented here. The format is based on
   preventing a `NativeAd` leak.
 - `AppOpenAdManager` holds the current `Activity` via a `WeakReference` (fixes a `StaticFieldLeak`).
 - Banner `preload` builds its `AdView` only after the SDK is initialized.
+- **Consumer R8 keep rules** — the shipped `consumer-rules.keep` (previously empty) now keeps the
+  XML-inflated `NativeAdView` / `MediaView` and the library's `BannerNativeView` /
+  `NativeTemplateView`, so an R8-minified host app can't strip them and break native inflation in
+  release (banners, created in code, were unaffected).
 
 ### Changed
+- Ad **load failures now log the reason centrally** — `code` / `message` / `responseInfo` for every
+  format (e.g. `code=NO_FILL`), under tag `NextGenAds`, making no-fill vs invalid-request easy to tell.
 - `app:ngad_template` is now resolved **by name** — the attribute is a plain string matched against
   the `NativeTemplate` enum names (`NativeTemplate.fromName`), replacing the brittle integer-index
   `fromAttr`. Existing XML using names (`app:ngad_template="medium"`) is unaffected.
