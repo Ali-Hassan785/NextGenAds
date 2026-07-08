@@ -17,7 +17,10 @@ import com.alihassan.nextgenads.NextGenAds
  * Timeline for a cold start:
  * - ad loads fast  → wait out [minDelayMs], show the ad, then [onComplete] on dismiss.
  * - ad loads slow  → show it as soon as it lands (past [minDelayMs]), up to [timeoutMs].
- * - ad never loads → [onComplete] fires at [timeoutMs] (the in-flight load keeps warming the cache).
+ * - ad fails       → [onComplete] fires after [minDelayMs]. With [retryOnFailure] `false` (default)
+ *                    the splash makes a **single** request and never fires retry requests; with it
+ *                    `true` the load retries in the background to warm the cache for a later screen.
+ * - ad never loads → [onComplete] fires at [timeoutMs].
  * - ads disabled   → [onComplete] fires after [minDelayMs], no request.
  *
  * Requires [NextGenAds.initialize] (and consent) to have completed — call this once that's done.
@@ -31,6 +34,9 @@ object SplashAd {
      * @param minDelayMs minimum time (ms) to keep the splash visible before the ad can show.
      * @param timeoutMs maximum time (ms) to wait for the ad; coerced to be ≥ [minDelayMs]. `0`
      *   disables the timeout (bounded only by the load's own retry budget).
+     * @param retryOnFailure when `false` (default) the splash load is a **single** attempt — a failed
+     *   load proceeds at once and never fires retry requests. Set `true` to keep the helper's
+     *   retry/backoff so the load keeps trying (warming the cache for a later screen).
      * @param onComplete run once, on the main thread, when the splash should be dismissed.
      */
     @JvmStatic
@@ -40,6 +46,7 @@ object SplashAd {
         adUnitId: String,
         minDelayMs: Long = 1_000L,
         timeoutMs: Long = 8_000L,
+        retryOnFailure: Boolean = false,
         onComplete: () -> Unit,
     ) = NextGenAds.runOnMain {
         val start = SystemClock.elapsedRealtime()
@@ -65,6 +72,12 @@ object SplashAd {
 
         val helper = Interstitials.get(adUnitId)
 
+        // Fail-fast splash: cap the load to a single attempt so a failed splash load doesn't fire
+        // retry requests (during or after the splash). Restored the moment the load resolves — safe
+        // because the helper runs only one in-flight load at a time, so nothing else races on it.
+        val savedMaxRetries = helper.maxRetries
+        if (!retryOnFailure) helper.maxRetries = 0
+
         // Hard ceiling on the whole splash: past this we leave no matter what. timeoutMs > minDelayMs
         // is enforced so the timeout can never cut the minimum splash time short.
         val cappedTimeout = if (timeoutMs <= 0) 0 else timeoutMs.coerceAtLeast(minDelayMs)
@@ -75,6 +88,7 @@ object SplashAd {
         if (cappedTimeout > 0) handler.postDelayed(timeoutRunnable, cappedTimeout)
 
         helper.load { loaded ->
+            if (!retryOnFailure) helper.maxRetries = savedMaxRetries // restore before anything else
             if (finished) return@load // already timed out / proceeded
             handler.removeCallbacks(timeoutRunnable)
             if (!loaded) {
