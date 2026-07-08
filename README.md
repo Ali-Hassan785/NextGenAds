@@ -19,6 +19,7 @@ ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Complete implementation (preload + show)](#complete-implementation-preload--show)
 - [Consent (UMP / GDPR)](#consent-ump--gdpr)
 - [Initialization](#initialization)
 - [Splash screen (splash interstitial)](#splash-screen-splash-interstitial)
@@ -152,6 +153,152 @@ Interstitials.get(INTERSTITIAL_UNIT).show(this) { goToNextScreen() }
 ```
 
 Prefer a real splash gate? See [Splash screen](#splash-screen-splash-interstitial).
+
+---
+
+## Complete implementation (preload + show)
+
+A single, copy-pasteable Activity that wires up **consent → init → preload → show** for the three
+formats you'll use most — **banner, native and interstitial** — plus a **counter-gated interstitial**
+that only shows on every Nth action. This mirrors the sample app in `app/`.
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var bannerContainer: FrameLayout
+    private lateinit var nativeAdView: BannerNativeView   // drop-in banner/native view from your layout
+
+    /** Clicks on the "counter" action — drives the "1st, then every 4th" interstitial gate. */
+    private var counterClicks = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        bannerContainer = findViewById(R.id.bannerContainer)
+        nativeAdView = findViewById(R.id.nativeAdView)
+
+        findViewById<Button>(R.id.btnBanner).setOnClickListener { showBanner() }
+        findViewById<Button>(R.id.btnNative).setOnClickListener { showNative() }
+        findViewById<Button>(R.id.btnInterstitial).setOnClickListener { showInterstitial() }
+        findViewById<Button>(R.id.btnCounter).setOnClickListener { showInterstitialByCounter() }
+
+        // Gather consent, initialize, then preload everything so the first show is instant.
+        gatherConsentAndInit()
+    }
+
+    // 1. Consent → init → preload -----------------------------------------
+
+    private fun gatherConsentAndInit() {
+        val consent = ConsentManager.getInstance(this)
+        val start = {
+            NextGenAds.initialize(this, APP_ID) { preloadAll() }   // runs once the SDK is ready
+        }
+        if (consent.canRequestAds) start() else consent.gatherConsent(this) { start() }
+    }
+
+    /** Warm every cache right after init — the single biggest lever on show rate. */
+    private fun preloadAll() {
+        BannerAdHelper.preload(this, BANNER_UNIT, count = 1)
+        NativeAdHelper.preload(NATIVE_UNIT, count = 2)
+        Interstitials.preload(INTERSTITIAL_UNIT)
+    }
+
+    // 2. Banner — attaches a preloaded banner instantly, else loads behind a shimmer ------
+
+    private fun showBanner() {
+        BannerAdHelper.loadAdaptiveBanner(
+            activity = this,
+            container = bannerContainer,
+            adUnitId = BANNER_UNIT,
+            onLoaded = { /* shown */ },
+            onFailed = { /* no fill — the container is collapsed automatically */ },
+        )
+    }
+
+    // 3. Native — renders into the drop-in view with the chosen template ------------------
+
+    private fun showNative() {
+        nativeAdView.load(
+            adUnitId = NATIVE_UNIT,
+            remoteEnabled = true,                     // your remote-config flag; false hides the view
+            nativeTemplate = NativeTemplate.MEDIUM,   // optional override
+            onLoaded = { /* shown */ },
+            onFailed = { /* failed — the view hides itself */ },
+        )
+    }
+
+    // 4. Interstitial — show a preloaded ad, or load one on demand -----------------------
+
+    private fun showInterstitial() {
+        // Shows the cached ad instantly if ready, otherwise requests one (bounded by the timeout).
+        // onDismiss always fires — even when no ad could be shown — so your flow stays uniform.
+        Interstitials.get(INTERSTITIAL_UNIT).loadAndShow(this, timeoutMs = 8_000L) {
+            goToNextScreen()
+        }
+    }
+
+    // 5. Counter-gated interstitial — show on click 1, then every 4th (1, 5, 9, 13 …) ----
+
+    private fun showInterstitialByCounter() {
+        val helper = Interstitials.get(INTERSTITIAL_UNIT)
+        // Warm an ad the moment the counter is first used, so even click #1 is ready.
+        if (!helper.isReady) Interstitials.preload(INTERSTITIAL_UNIT)
+        counterClicks++
+
+        // showFirstThenEvery tracks the counter for you; onDismiss fires on the shown clicks.
+        // forceLoad = true loads on demand (bounded by timeoutMs) if the gate opens with no cached ad.
+        val shown = helper.showFirstThenEvery(this, nth = 4, forceLoad = true, timeoutMs = 5_000L) {
+            goToNextScreen()
+        }
+        if (!shown) {
+            // A non-show click: warm the next ad so the gated-in click shows without a load wait.
+            Interstitials.preload(INTERSTITIAL_UNIT)
+        }
+    }
+
+    override fun onDestroy() {
+        nativeAdView.destroy()
+        super.onDestroy()
+    }
+
+    companion object {
+        private const val APP_ID = "ca-app-pub-3940256099942544~3347511713"
+        private const val BANNER_UNIT = "ca-app-pub-3940256099942544/9214589741"
+        private const val NATIVE_UNIT = "ca-app-pub-3940256099942544/2247696110"
+        private const val INTERSTITIAL_UNIT = "ca-app-pub-3940256099942544/1033173712"
+    }
+}
+```
+
+The corresponding layout just needs the banner container and the native view:
+
+```xml
+<FrameLayout
+    android:id="@+id/bannerContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content" />
+
+<com.alihassan.nextgenads.BannerNativeView
+    android:id="@+id/nativeAdView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:ngad_ad_type="nativead"
+    app:ngad_template="medium" />
+```
+
+**Why it's structured this way**
+
+| Step | Why |
+| --- | --- |
+| Preload in the `initialize` callback | The cache is warm before the user reaches any placement, so the first show is instant instead of showing a shimmer. |
+| `loadAndShow` for the plain interstitial | One call handles both cases — show the cached ad, or request+show on demand — and `onDismiss` always fires, so navigation is uniform. |
+| `showFirstThenEvery` for the counter | The library tracks the per-unit counter app-wide; you don't keep your own modulo logic. `nth = 4` → shows on 1, 5, 9, 13 … |
+| Re-`preload` after a non-show click | Keeps an ad ready for the *next* gated-in click, so it too shows without a visible load. |
+| `forceLoad = true` | Safety net: if the gate opens and no ad is cached yet (e.g. click #1, or a splash consumed the unit), it loads on demand within `timeoutMs` instead of silently skipping. |
+
+> Counter variants: use `showEvery(activity, nth = 3) { … }` to show on every 3rd call (3, 6, 9 …)
+> instead of first-then-every. Reset the counter for a new session with
+> `Interstitials.get(unit).resetTriggerCount()`. See [Counter-gated shows](#counter-gated-shows).
 
 ---
 
