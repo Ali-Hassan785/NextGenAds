@@ -19,8 +19,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Loads and shows a single rewarded ad unit (Next-Gen SDK) with automatic preloading and
- * exponential-backoff retries. A fresh ad is requested immediately after each dismissal so the
- * next reward is ready to show.
+ * exponential-backoff retries. Set [autoReload] to `true` to request a fresh ad automatically after
+ * each dismissal, or warm the next one yourself via [load] / [RewardedAds.preload].
  *
  * Prefer obtaining instances through [RewardedAds.get] so the same cached ad is reused across
  * screens. Requires [NextGenAds.initialize] to have completed first. SDK callbacks are marshalled
@@ -46,6 +46,26 @@ class RewardedAdHelper(private val adUnitId: String) {
      * anything older is dropped and re-requested instead of shown.
      */
     var adValidityMs = 55 * 60 * 1000L
+
+    /**
+     * When `true`, the helper keeps an ad ready around [show]: it requests the next ad after each
+     * dismissal/failed-show, and — crucially — when [show] finds none ready (the preload failed or
+     * hasn't landed) it **force-loads one on demand and shows it** (via [loadAndShow], bounded by
+     * [autoReloadTimeoutMs]) instead of giving up.
+     *
+     * Default `false` so a preloaded ad results in a **single** request — no extra load per show, and
+     * a [show] with no cached ad simply invokes `onDismiss` (returning `false`) so the caller can
+     * show its own "ad not ready" message. Preload explicitly via [load] / [RewardedAds.preload], or
+     * call [loadAndShow] yourself for on-demand load-and-show.
+     */
+    var autoReload = false
+
+    /**
+     * Upper bound (ms) on the force-load wait when [autoReload] is `true` and [show] must fetch an ad
+     * on demand. `0` waits for the load result (itself bounded by the retry budget). Ignored when
+     * [autoReload] is `false`.
+     */
+    var autoReloadTimeoutMs = 0L
 
     /** A non-expired ad is cached and ready to show. */
     val isReady: Boolean
@@ -208,8 +228,13 @@ class RewardedAdHelper(private val adUnitId: String) {
         evictIfExpired()
         val ad = rewardedAd
         if (ad == null) {
+            // No preloaded ad (the preload failed or hasn't landed yet). With autoReload on, force-load
+            // one on demand and show it; otherwise fail fast so the caller can show its own message.
+            if (autoReload) {
+                loadAndShow(activity, onReward, autoReloadTimeoutMs, onDismiss)
+                return true
+            }
             onDismiss()
-            load() // make sure the next attempt has an ad ready
             return false
         }
         if (showing || !NextGenAds.tryBeginFullScreenShow()) {
@@ -232,7 +257,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                 NextGenAds.runOnMain {
                     showing = false
                     NextGenAds.endFullScreenShow()
-                    load()
+                    if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.REWARDED, adUnitId)
                     onDismiss()
                 }
@@ -244,7 +269,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                     NextGenAds.endFullScreenShow()
                     NextGenAds.log("Rewarded show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.REWARDED, adUnitId, fullScreenContentError)
-                    load()
+                    if (autoReload) load()
                     onDismiss()
                 }
             }

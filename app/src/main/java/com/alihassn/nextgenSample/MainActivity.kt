@@ -51,6 +51,9 @@ class MainActivity : AppCompatActivity() {
     /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
     private var counterClicks = 0
 
+    /** Index of the show-rate (USE) column in the stats table — the cell we color by threshold. */
+    private val useColumnIndex = ShowRateTracker.COLUMNS.indexOf("USE")
+
     /** Refreshes the bottom stats panel whenever any ad event moves the show-rate counters. */
     private val statsListener = object : AdEventListener {
         override fun onAdRequested(format: AdFormat, adUnitId: String) = refreshStats()
@@ -490,14 +493,21 @@ class MainActivity : AppCompatActivity() {
     /** Builds one table row; FORMAT column is left-aligned, the rest right-aligned (see COLUMNS). */
     private fun statsRow(cells: List<String>, header: Boolean): TableRow = TableRow(this).apply {
         cells.forEachIndexed { i, text ->
+            // Flag a low show rate (the USE column = impressions/loaded) so weak placements stand out.
+            val warnColor = if (!header && i == useColumnIndex) showRateWarnColor(text) else null
             addView(
                 TextView(this@MainActivity).apply {
                     this.text = text
                     typeface = Typeface.MONOSPACE
-                    setTypeface(typeface, if (header) Typeface.BOLD else Typeface.NORMAL)
+                    // Bold the show-rate cell when it's flagged, so the color reads clearly.
+                    setTypeface(typeface, if (header || warnColor != null) Typeface.BOLD else Typeface.NORMAL)
                     textSize = 12f
-                    // Muted header, light body — legible and quiet on the dark strip.
-                    setTextColor(if (header) Color.parseColor("#969BA6") else Color.parseColor("#E3E5EA"))
+                    // Muted header, light body — legible and quiet on the dark strip; a flagged show
+                    // rate overrides with orange (< 95%) or red (< 80%).
+                    setTextColor(
+                        warnColor
+                            ?: if (header) Color.parseColor("#969BA6") else Color.parseColor("#E3E5EA"),
+                    )
                     val leftAligned = i < ShowRateTracker.LEFT_ALIGNED.size && ShowRateTracker.LEFT_ALIGNED[i]
                     gravity = if (leftAligned) Gravity.START else Gravity.END
                     setPadding(dp(10), dp(4), dp(10), dp(4))
@@ -507,6 +517,19 @@ class MainActivity : AppCompatActivity() {
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * Color for a show-rate cell (e.g. "82%"): orange below 95%, red below 80%, and `null` (keep the
+     * default light color) at 95%+ or when there's no rate yet ("—"). Drives the stats-table warning.
+     */
+    private fun showRateWarnColor(pct: String): Int? {
+        val value = pct.removeSuffix("%").toIntOrNull() ?: return null
+        return when {
+            value < 80 -> Color.parseColor("#E5484D") // red — poor show rate
+            value < 95 -> Color.parseColor("#F5A623") // orange — below target
+            else -> null                              // healthy
         }
     }
 
