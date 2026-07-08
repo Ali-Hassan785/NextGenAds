@@ -43,7 +43,13 @@ android {
 }
 
 dependencies {
-    implementation(project(":nextgenads"))
+  implementation(project(":nextgenads"))
+
+//    implementation("com.github.Ali-Hassan785:nextgenads:1.0.2")
+
+
+
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.androidx.activity.ktx)
