@@ -98,7 +98,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785:nextgenads:1.0.0")
+    implementation("com.github.Ali-Hassan785:nextgenads:1.0.2")
 }
 ```
 
