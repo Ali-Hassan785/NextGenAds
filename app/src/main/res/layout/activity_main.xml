@@ -82,11 +82,82 @@
                     android:layout_height="wrap_content"
                     android:text="Banner" />
 
+                <TextView
+                    style="@style/Text.NextGen.Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Size" />
+
+                <!-- Banner size selector — applies to preload / show / collapsible below. Maps to
+                     BannerSize in the library (see selectedBannerSize() in MainActivity). -->
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/rgBannerSize"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    app:chipSpacingHorizontal="8dp"
+                    app:selectionRequired="true"
+                    app:singleLine="false"
+                    app:singleSelection="true">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeAdaptive"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Adaptive" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeInline"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Inline" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeBanner"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="320×50" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeLarge"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="320×100" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeFull"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="468×60" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeLeaderboard"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="728×90" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSizeMrec"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MREC 300×250" />
+                </com.google.android.material.chip.ChipGroup>
+
                 <Button
                     android:id="@+id/btnPreloadBanner"
                     style="@style/Widget.NextGen.Button.Ghost"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
                     android:text="Preload banner" />
 
                 <Button
@@ -103,19 +174,14 @@
                     android:layout_height="wrap_content"
                     android:text="Load &amp; show banner on demand" />
 
-                <Button
-                    android:id="@+id/btnCollapsibleBottom"
-                    style="@style/Widget.NextGen.Button.Ghost"
-                    android:layout_width="match_parent"
+                <!-- Single boolean that folds the collapsible flow into the same banner code path:
+                     off → a normal banner, on → a collapsible banner (anchored at the bottom). -->
+                <CheckBox
+                    android:id="@+id/cbCollapsible"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Collapsible banner (bottom)" />
-
-                <Button
-                    android:id="@+id/btnCollapsibleTop"
-                    style="@style/Widget.NextGen.Button.Ghost"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Collapsible banner (top)" />
+                    android:layout_marginTop="8dp"
+                    android:text="Collapsible banner" />
 
                 <FrameLayout
                     android:id="@+id/bannerContainer"

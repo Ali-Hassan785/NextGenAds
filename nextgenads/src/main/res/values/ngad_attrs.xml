@@ -21,5 +21,9 @@
             <enum name="nativead" value="1" />
         </attr>
         <attr name="ngad_template" />
+        <!-- Banner size when ngad_ad_type="banner", by name (case-insensitive), e.g. "adaptive",
+             "medium_rectangle", "large_banner". Matched against BannerSize.fromName(); an unknown or
+             missing value falls back to ADAPTIVE (full-width adaptive). -->
+        <attr name="ngad_banner_size" format="string" />
     </declare-styleable>
 </resources>

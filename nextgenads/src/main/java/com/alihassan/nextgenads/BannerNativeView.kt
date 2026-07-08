@@ -7,6 +7,7 @@ import android.util.AttributeSet
 import android.view.View
 import android.widget.FrameLayout
 import com.alihassan.nextgenads.banner.BannerAdHelper
+import com.alihassan.nextgenads.banner.BannerSize
 import com.alihassan.nextgenads.nativead.NativeAdHelper
 import com.alihassan.nextgenads.nativead.NativeTemplate
 import com.alihassan.nextgenads.nativead.NativeTemplateView
@@ -58,6 +59,9 @@ class BannerNativeView @JvmOverloads constructor(
     /** Template used when [adType] is [AdType.NATIVE]. Can be overridden per [load] call. */
     var nativeTemplate: NativeTemplate = NativeTemplate.MEDIUM
 
+    /** Banner size used when [adType] is [AdType.BANNER]. Can be overridden per [load] call. */
+    var bannerSize: BannerSize = BannerSize.ADAPTIVE
+
     private var nativeView: NativeTemplateView? = null
 
     init {
@@ -66,6 +70,8 @@ class BannerNativeView @JvmOverloads constructor(
             adType = AdType.fromAttr(typed.getInt(R.styleable.BannerNativeView_ngad_ad_type, 1))
             nativeTemplate =
                 NativeTemplate.fromName(typed.getString(R.styleable.BannerNativeView_ngad_template))
+            bannerSize =
+                BannerSize.fromName(typed.getString(R.styleable.BannerNativeView_ngad_banner_size))
             typed.recycle()
         }
     }
@@ -79,6 +85,7 @@ class BannerNativeView @JvmOverloads constructor(
      * @param remoteEnabled the remote-config value for this placement.
      * @param adType optional override of the configured [adType].
      * @param nativeTemplate optional override of the configured [nativeTemplate].
+     * @param bannerSize optional override of the configured [bannerSize] (used only for banners).
      */
     @JvmOverloads
     fun load(
@@ -86,11 +93,13 @@ class BannerNativeView @JvmOverloads constructor(
         remoteEnabled: Boolean = true,
         adType: AdType = this.adType,
         nativeTemplate: NativeTemplate = this.nativeTemplate,
+        bannerSize: BannerSize = this.bannerSize,
         onLoaded: (() -> Unit)? = null,
         onFailed: (() -> Unit)? = null,
     ) {
         this.adType = adType
         this.nativeTemplate = nativeTemplate
+        this.bannerSize = bannerSize
 
         if (!NextGenAds.canShowAds() || !remoteEnabled || adUnitId.isBlank()) {
             hide()
@@ -130,6 +139,7 @@ class BannerNativeView @JvmOverloads constructor(
             activity,
             this,
             adUnitId,
+            size = bannerSize,
             onLoaded = { onLoaded?.invoke() },
             onFailed = { onFailed?.invoke() },
         )

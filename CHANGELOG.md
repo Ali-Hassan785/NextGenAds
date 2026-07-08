@@ -6,7 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-08
+
 ### Added
+- **Banner sizes** — `BannerSize` (`ADAPTIVE`, `ADAPTIVE_INLINE`, `BANNER` 320×50, `LARGE_BANNER`
+  320×100, `FULL_BANNER` 468×60, `LEADERBOARD` 728×90, `MEDIUM_RECTANGLE` 300×250) can be passed to
+  `BannerAdHelper.preload` / `loadAdaptiveBanner`, to `BannerNativeView.load(bannerSize = …)`, or via
+  the `app:ngad_banner_size` XML attribute. The preload cache is keyed by ad unit **and** size, so a
+  banner warmed at one size is never attached to a request for another. Fixed sizes are now centered
+  in their container, and the loading shimmer matches a fixed size's exact footprint.
+
+### Added (earlier, since 1.0.0)
 - **Runtime premium purge** — setting `NextGenAds.premium = true` / `enabled = false` (or calling
   `NextGenAds.refreshPremiumState()` for a dynamic `premiumProvider`) now immediately drops every
   format's cached ad and hides any banner/native already on screen, via new `clearAll()` methods on
@@ -99,4 +109,5 @@ Initial release.
 - `com.google.android.ump:user-messaging-platform:4.0.0`
 - `com.facebook.shimmer:shimmer:0.5.0`
 
+[1.0.2]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.2
 [1.0.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.0

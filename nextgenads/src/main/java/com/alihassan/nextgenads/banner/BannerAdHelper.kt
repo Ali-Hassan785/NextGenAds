@@ -2,13 +2,16 @@ package com.alihassan.nextgenads.banner
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
@@ -35,6 +38,62 @@ import java.util.concurrent.atomic.AtomicBoolean
 enum class BannerCollapsible(internal val value: String) {
     TOP("top"),
     BOTTOM("bottom"),
+}
+
+/**
+ * The size of banner to request. Two adaptive sizes flex their height to the slot width (recommended
+ * for most placements), and the rest are the fixed IAB sizes.
+ *
+ * - [ADAPTIVE] — full-width **large anchored adaptive** banner (the default; height chosen by the SDK
+ *   from the slot width). Best fill and the tallest anchored size.
+ * - [ADAPTIVE_INLINE] — **inline adaptive** banner for scrollable content; can be taller than an
+ *   anchored banner and is sized for feeds/lists rather than a pinned top/bottom slot.
+ * - [BANNER] — fixed 320×50.
+ * - [LARGE_BANNER] — fixed 320×100.
+ * - [FULL_BANNER] — fixed 468×60 (tablets).
+ * - [LEADERBOARD] — fixed 728×90 (tablets).
+ * - [MEDIUM_RECTANGLE] — fixed 300×250 (MREC).
+ *
+ * Fixed sizes ignore the requested width; adaptive sizes use the slot/container width. The preload
+ * cache is keyed by ad unit **and** size, so preloading one size never serves a request for another.
+ */
+enum class BannerSize {
+    ADAPTIVE {
+        override fun resolve(context: Context, widthDp: Int): AdSize =
+            AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, widthDp)
+    },
+    ADAPTIVE_INLINE {
+        override fun resolve(context: Context, widthDp: Int): AdSize =
+            AdSize.getCurrentOrientationInlineAdaptiveBannerAdSize(context, widthDp)
+    },
+    BANNER {
+        override fun resolve(context: Context, widthDp: Int): AdSize = AdSize.BANNER
+    },
+    LARGE_BANNER {
+        override fun resolve(context: Context, widthDp: Int): AdSize = AdSize.LARGE_BANNER
+    },
+    FULL_BANNER {
+        override fun resolve(context: Context, widthDp: Int): AdSize = AdSize.FULL_BANNER
+    },
+    LEADERBOARD {
+        override fun resolve(context: Context, widthDp: Int): AdSize = AdSize.LEADERBOARD
+    },
+    MEDIUM_RECTANGLE {
+        override fun resolve(context: Context, widthDp: Int): AdSize = AdSize.MEDIUM_RECTANGLE
+    };
+
+    /** Resolves the SDK [AdSize] for this size; [widthDp] is used only by the adaptive sizes. */
+    internal abstract fun resolve(context: Context, widthDp: Int): AdSize
+
+    /** Whether this size flexes its dimensions to the slot width (vs. a fixed IAB size). */
+    internal val isAdaptive: Boolean get() = this == ADAPTIVE || this == ADAPTIVE_INLINE
+
+    companion object {
+        /** Maps a case-insensitive size name (e.g. from XML) to a [BannerSize]; defaults to [ADAPTIVE]. */
+        @JvmStatic
+        fun fromName(name: String?): BannerSize =
+            entries.firstOrNull { it.name.equals(name?.trim(), ignoreCase = true) } ?: ADAPTIVE
+    }
 }
 
 /**
@@ -84,6 +143,9 @@ object BannerAdHelper {
      *   width; **pass the container's content width if your banner placement has horizontal padding
      *   or margins**, otherwise the preloaded ad is sized wider than the slot and the SDK logs
      *   "Not enough space to show the full ad". Use [containerWidthDp] to compute it from the view.
+     *   Ignored for the fixed [BannerSize]s (they have a fixed width).
+     * @param size the banner size to warm. Preloading a size only serves a later [loadAdaptiveBanner]
+     *   call requesting that **same** size — the cache is keyed by ad unit and size.
      */
     @JvmStatic
     @JvmOverloads
@@ -92,35 +154,37 @@ object BannerAdHelper {
         adUnitId: String,
         count: Int = 1,
         widthDp: Int = screenWidthDp(activity),
+        size: BannerSize = BannerSize.ADAPTIVE,
     ) {
         if (!NextGenAds.canRequest()) return
         // Preloaded AdViews are created with this Activity as their context and sit detached in a
         // process-wide pool — purge them when their Activity dies, or they'd leak it (and attach
         // dead-context views later).
         installPurgeHook(activity.application)
+        val key = poolKey(adUnitId, size)
         val target = count.coerceIn(0, maxCachePerUnit)
-        while (cachedCount(adUnitId) + inFlightCount(adUnitId) < target) {
-            incFlight(adUnitId)
+        while (cachedCount(key) + inFlightCount(key) < target) {
+            incFlight(key)
             // Queue until the SDK is ready so banner warm-ups issued during app start aren't
             // dropped. The AdView is built inside the block so we never touch the SDK pre-init.
             NextGenAds.whenInitialized {
                 if (activity.isFinishing || activity.isDestroyed) {
                     // The preloading Activity died while queued — don't build a dead-context view.
-                    decFlight(adUnitId)
+                    decFlight(key)
                     return@whenInitialized
                 }
                 val adView = AdView(activity)
-                val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp)
+                val adSize = size.resolve(activity, widthDp)
                 loadBannerWithRetry(
                     adView, adUnitId, adSize, attempt = 0,
                     onLoaded = { ad ->
-                        decFlight(adUnitId)
+                        decFlight(key)
                         attachEvents(ad, adUnitId)
-                        offer(adUnitId, adView)
-                        NextGenAds.log("Banner preloaded: $adUnitId")
+                        offer(key, adView)
+                        NextGenAds.log("Banner preloaded: $adUnitId (${size.name})")
                         NextGenAds.dispatchLoaded(AdFormat.BANNER, adUnitId)
                     },
-                    onFailed = { decFlight(adUnitId) },
+                    onFailed = { decFlight(key) },
                 )
             }
         }
@@ -137,6 +201,8 @@ object BannerAdHelper {
      * @param collapsible when non-null, requests a **collapsible** banner anchored at that edge.
      *   Collapsible banners are always loaded fresh (the preload cache holds standard banners), so
      *   [refill] has no effect for them.
+     * @param size the banner size to show. Only a banner [preload]ed at the **same** size is attached
+     *   from cache; any other size is loaded fresh. Defaults to a full-width adaptive banner.
      */
     @JvmStatic
     @JvmOverloads
@@ -146,6 +212,7 @@ object BannerAdHelper {
         adUnitId: String,
         refill: Boolean = false,
         collapsible: BannerCollapsible? = null,
+        size: BannerSize = BannerSize.ADAPTIVE,
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
     ) {
@@ -154,19 +221,23 @@ object BannerAdHelper {
             return
         }
 
+        val key = poolKey(adUnitId, size)
+        // Width to request: adaptive sizes flex to the container's content width; fixed sizes ignore it.
+        val widthDp = bannerWidthDp(activity, container)
+
         // Fast path: attach a preloaded banner with no shimmer gap. Skipped for collapsible requests,
         // which must be loaded fresh so the SDK applies the collapsible overlay to this impression.
-        val cached = if (collapsible == null) poll(adUnitId) else null
+        val cached = if (collapsible == null) poll(key) else null
         if (cached != null) {
             detachFromParent(cached)
             destroyBannerChildren(container) // release any banner this placement was showing before
             container.removeAllViews()
-            container.addView(cached)
+            addCentered(container, cached)
             container.visibility = View.VISIBLE
             shownContainers.add(container)
-            NextGenAds.log("Banner attached from cache: $adUnitId")
+            NextGenAds.log("Banner attached from cache: $adUnitId (${size.name})")
             onLoaded?.invoke()
-            if (refill) preload(activity, adUnitId, 1)
+            if (refill) preload(activity, adUnitId, 1, widthDp, size)
             return
         }
 
@@ -184,18 +255,21 @@ object BannerAdHelper {
 
         val adView = AdView(activity)
         adView.visibility = View.GONE
-        container.addView(adView)
-        container.addView(shimmer)
+        addCentered(container, adView)
+        addCentered(container, shimmer)
         container.visibility = View.VISIBLE
         shownContainers.add(container)
         shimmer.startShimmer()
 
-        val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
-            activity, bannerWidthDp(activity, container)
-        )
+        val adSize = size.resolve(activity, widthDp)
         // Size the shimmer to the banner's resolved height so the placeholder occupies exactly the
-        // slot the ad will fill — otherwise the container jumps when the (taller) ad swaps in.
-        shimmer.layoutParams = shimmer.layoutParams.apply { height = adSize.getHeightInPixels(activity) }
+        // slot the ad will fill — otherwise the container jumps when the (taller) ad swaps in. For a
+        // fixed size, also match its width so the (centered) placeholder has the ad's exact footprint
+        // instead of a full-width block that collapses to a narrow ad; adaptive banners stay full-width.
+        shimmer.layoutParams = shimmer.layoutParams.apply {
+            height = adSize.getHeightInPixels(activity)
+            if (!size.isAdaptive) width = adSize.getWidthInPixels(activity)
+        }
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.
         NextGenAds.whenInitialized {
             loadBannerWithRetry(
@@ -334,6 +408,26 @@ object BannerAdHelper {
     }
 
     /**
+     * Adds [view] to [container], horizontally centered when the container is a [FrameLayout]. Fixed
+     * IAB sizes (e.g. 320×50, 300×250 MREC) are narrower than a full-width slot, so without this they
+     * render flush to the start; adaptive banners are full-width, so centering is a no-op for them.
+     * Any existing width/height is preserved — only the gravity is applied.
+     */
+    private fun addCentered(container: ViewGroup, view: View) {
+        if (container !is FrameLayout) {
+            container.addView(view)
+            return
+        }
+        val existing = view.layoutParams
+        val lp = existing as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
+            existing?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+            existing?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        lp.gravity = Gravity.CENTER_HORIZONTAL
+        container.addView(view, lp)
+    }
+
+    /**
      * Destroys every pooled banner and hides/clears any banner currently shown in a container this
      * helper populated — used when ads are disabled at runtime (e.g. the user goes premium).
      */
@@ -391,23 +485,26 @@ object BannerAdHelper {
         }
     }
 
+    /** Cache/in-flight key: an ad unit is pooled separately per [BannerSize] so sizes never mix. */
+    private fun poolKey(adUnitId: String, size: BannerSize): String = "$adUnitId|${size.name}"
+
     @Synchronized
-    private fun poll(adUnitId: String): AdView? {
-        val queue = pool[adUnitId] ?: return null
+    private fun poll(key: String): AdView? {
+        val queue = pool[key] ?: return null
         // Evict-and-skip entries that expired or whose Activity died while they sat in the pool.
         while (true) {
             val cached = queue.pollFirst() ?: return null
             val expired = SystemClock.elapsedRealtime() - cached.loadedAtElapsed >= adValidityMs
             val deadContext = (cached.adView.context as? Activity)?.isDestroyed == true
             if (!expired && !deadContext) return cached.adView
-            NextGenAds.log("Banner cache entry ${if (expired) "expired" else "from destroyed activity"}, destroying: $adUnitId")
+            NextGenAds.log("Banner cache entry ${if (expired) "expired" else "from destroyed activity"}, destroying: $key")
             cached.adView.destroy()
         }
     }
 
     @Synchronized
-    private fun offer(adUnitId: String, adView: AdView) {
-        val queue = pool.getOrPut(adUnitId) { ArrayDeque() }
+    private fun offer(key: String, adView: AdView) {
+        val queue = pool.getOrPut(key) { ArrayDeque() }
         if (queue.size >= maxCachePerUnit) {
             adView.destroy()
         } else {
@@ -416,18 +513,18 @@ object BannerAdHelper {
     }
 
     @Synchronized
-    private fun cachedCount(adUnitId: String): Int = pool[adUnitId]?.size ?: 0
+    private fun cachedCount(key: String): Int = pool[key]?.size ?: 0
 
     @Synchronized
-    private fun inFlightCount(adUnitId: String): Int = inFlight[adUnitId] ?: 0
+    private fun inFlightCount(key: String): Int = inFlight[key] ?: 0
 
     @Synchronized
-    private fun incFlight(adUnitId: String) {
-        inFlight[adUnitId] = (inFlight[adUnitId] ?: 0) + 1
+    private fun incFlight(key: String) {
+        inFlight[key] = (inFlight[key] ?: 0) + 1
     }
 
     @Synchronized
-    private fun decFlight(adUnitId: String) {
-        inFlight[adUnitId] = ((inFlight[adUnitId] ?: 1) - 1).coerceAtLeast(0)
+    private fun decFlight(key: String) {
+        inFlight[key] = ((inFlight[key] ?: 1) - 1).coerceAtLeast(0)
     }
 }

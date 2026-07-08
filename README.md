@@ -443,9 +443,40 @@ BannerAdHelper.loadAdaptiveBanner(
 | --- | --- | --- |
 | `maxCachePerUnit` | `2` | Max preloaded banners cached per ad unit. |
 | `maxRetries` | `2` | Reload attempts after a failed load (backoff 1s/2s/4s). |
-| `preload(activity, adUnitId, count, widthDp)` | `count = 1` | Warms the cache. |
-| `loadAdaptiveBanner(activity, container, adUnitId, refill, collapsible, onLoaded, onFailed)` | `refill = false` | Shows a banner. |
+| `preload(activity, adUnitId, count, widthDp, size)` | `count = 1`, `size = ADAPTIVE` | Warms the cache. |
+| `loadAdaptiveBanner(activity, container, adUnitId, refill, collapsible, size, onLoaded, onFailed)` | `refill = false`, `size = ADAPTIVE` | Shows a banner. |
 | `clearAll()` | — | Destroys the pool and hides banners in populated containers. |
+
+### Banner sizes
+
+By default a banner is a full-width **large anchored adaptive** banner whose height the SDK picks
+from the slot width. Pass a `BannerSize` to `preload` / `loadAdaptiveBanner` to request a different
+size — adaptive variants that flex to the slot, or the fixed IAB sizes:
+
+| `BannerSize` | Dimensions | Use for |
+| --- | --- | --- |
+| `ADAPTIVE` *(default)* | full width × adaptive height | Pinned top/bottom banner slots. |
+| `ADAPTIVE_INLINE` | full width × taller adaptive height | Banners inside scrolling content / feeds. |
+| `BANNER` | 320 × 50 | Fixed standard banner. |
+| `LARGE_BANNER` | 320 × 100 | Fixed taller banner. |
+| `FULL_BANNER` | 468 × 60 | Tablets. |
+| `LEADERBOARD` | 728 × 90 | Tablets. |
+| `MEDIUM_RECTANGLE` | 300 × 250 | In-content MREC. |
+
+```kotlin
+// Preload and show a 300×250 MREC:
+BannerAdHelper.preload(this, BANNER_UNIT, count = 1, size = BannerSize.MEDIUM_RECTANGLE)
+BannerAdHelper.loadAdaptiveBanner(
+    activity = this,
+    container = findViewById(R.id.mrecContainer),
+    adUnitId = BANNER_UNIT,
+    size = BannerSize.MEDIUM_RECTANGLE,
+)
+```
+
+The preload cache is keyed by **ad unit *and* size**, so a banner preloaded at one size is never
+attached to a request for another. Fixed sizes ignore `widthDp`; adaptive sizes use the container's
+content width. Collapsible requests always load fresh regardless of size.
 
 ### Collapsible banners
 
@@ -503,6 +534,7 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 | --- | --- | --- |
 | `app:ngad_ad_type` | `banner`, `nativead` | `nativead` |
 | `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `feed`, `spotlight` | `medium` |
+| `app:ngad_banner_size` | banner size name (used when `ngad_ad_type="banner"`) — `adaptive`, `adaptive_inline`, `banner`, `large_banner`, `full_banner`, `leaderboard`, `medium_rectangle` | `adaptive` |
 | `app:ngad_customLayout` | a `@layout` reference (overrides `ngad_template`) | — |
 | `app:ngad_customShimmer` | a `@layout` reference (else auto-generated) | — |
 
@@ -918,6 +950,7 @@ com.alihassan.nextgenads
 ├── consent.ConsentManager              // UMP consent
 ├── banner.BannerAdHelper               // adaptive + collapsible banners, clearAll()
 ├── banner.BannerCollapsible            // TOP, BOTTOM
+├── banner.BannerSize                   // ADAPTIVE, ADAPTIVE_INLINE, BANNER, LARGE_BANNER, FULL_BANNER, LEADERBOARD, MEDIUM_RECTANGLE
 ├── nativead.NativeAdHelper             // native loading + cache, clear()
 ├── nativead.NativeTemplate             // SMALL, MEDIUM, LARGE, BANNER, MEDIA_LEFT, COLLAPSIBLE, HERO, FEED, SPOTLIGHT
 ├── nativead.NativeTemplateView         // renders a NativeTemplate or a custom layout (setCustomTemplate)

@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.RadioGroup
 import android.widget.TableLayout
@@ -25,6 +26,7 @@ import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.banner.BannerCollapsible
+import com.alihassan.nextgenads.banner.BannerSize
 import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.events.AdEventListener
 import com.alihassan.nextgenads.events.AdFormat
@@ -43,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nativeAdView: BannerNativeView
     private lateinit var templateGroup: ChipGroup
     private lateinit var adTypeGroup: RadioGroup
+    private lateinit var bannerSizeGroup: ChipGroup
+    private lateinit var collapsibleCheck: CheckBox
 
     /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
     private var counterClicks = 0
@@ -97,20 +101,16 @@ class MainActivity : AppCompatActivity() {
         nativeAdView = findViewById(R.id.nativeAdView)
         templateGroup = findViewById(R.id.rgTemplate)
         adTypeGroup = findViewById(R.id.rgAdType)
+        bannerSizeGroup = findViewById(R.id.rgBannerSize)
 
         // Premium toggle — demonstrates the runtime purge (all cached ads dropped, shown ads hidden).
         findViewById<Button>(R.id.btnPremiumToggle).setOnClickListener { togglePremium(it as Button) }
 
         // 2. Banner.
+        collapsibleCheck = findViewById(R.id.cbCollapsible)
         findViewById<Button>(R.id.btnPreloadBanner).setOnClickListener { preloadBanner() }
         findViewById<Button>(R.id.btnShowBanner).setOnClickListener { showBanner() }
         findViewById<Button>(R.id.btnLoadShowBanner).setOnClickListener { showBanner() }
-        findViewById<Button>(R.id.btnCollapsibleBottom).setOnClickListener {
-            showCollapsibleBanner(BannerCollapsible.BOTTOM)
-        }
-        findViewById<Button>(R.id.btnCollapsibleTop).setOnClickListener {
-            showCollapsibleBanner(BannerCollapsible.TOP)
-        }
 
         // 3. Native.
         findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { preloadNative() }
@@ -179,39 +179,48 @@ class MainActivity : AppCompatActivity() {
 
     // --- 2. Banner ---------------------------------------------------------
 
-    private fun preloadBanner() {
-        if (!ensureReady()) return
-        BannerAdHelper.preload(this, BANNER_UNIT, count = 1)
-        setStatus("Preloading banner…")
+    /** The banner size chosen in the Size chip group (defaults to full-width adaptive). */
+    private fun selectedBannerSize(): BannerSize = when (bannerSizeGroup.checkedChipId) {
+        R.id.rbSizeInline -> BannerSize.ADAPTIVE_INLINE
+        R.id.rbSizeBanner -> BannerSize.BANNER
+        R.id.rbSizeLarge -> BannerSize.LARGE_BANNER
+        R.id.rbSizeFull -> BannerSize.FULL_BANNER
+        R.id.rbSizeLeaderboard -> BannerSize.LEADERBOARD
+        R.id.rbSizeMrec -> BannerSize.MEDIUM_RECTANGLE
+        else -> BannerSize.ADAPTIVE
     }
 
-    /** Attaches a preloaded banner instantly, or loads one on demand behind a shimmer. */
-    private fun showBanner() {
+    private fun preloadBanner() {
         if (!ensureReady()) return
-        setStatus("Showing banner…")
-        BannerAdHelper.loadAdaptiveBanner(
-            activity = this,
-            container = bannerContainer,
-            adUnitId = BANNER_UNIT,
-            onLoaded = { setStatus("Banner shown ✓") },
-            onFailed = { error -> setStatus("Banner failed: ${error.message}") },
-        )
+        val size = selectedBannerSize()
+        BannerAdHelper.preload(this, BANNER_UNIT, count = 1, size = size)
+        setStatus("Preloading banner (${size.name.lowercase()})…")
     }
 
     /**
-     * Loads a collapsible banner anchored at [position] (top or bottom) — it shows larger on the
-     * first impression and collapses to the anchored banner via the SDK's expand/collapse control.
+     * Single banner code path: attaches a preloaded banner instantly, or loads one on demand behind
+     * a shimmer. The "Collapsible banner" checkbox is the single boolean that folds the collapsible
+     * flow in here — when checked, a collapsible banner anchored at the bottom is requested (it shows
+     * larger on first impression and collapses via the SDK's expand/collapse control); otherwise a
+     * normal banner is shown. Both use the selected size.
      */
-    private fun showCollapsibleBanner(position: BannerCollapsible) {
+    private fun showBanner() {
         if (!ensureReady()) return
-        setStatus("Showing collapsible banner (${position.name.lowercase()})…")
+        val size = selectedBannerSize()
+        val collapsible = collapsibleCheck.isChecked
+        val label = if (collapsible) "collapsible banner" else "banner"
+        setStatus("Showing $label (${size.name.lowercase()})…")
         BannerAdHelper.loadAdaptiveBanner(
             activity = this,
             container = bannerContainer,
             adUnitId = BANNER_UNIT,
-            collapsible = position,
-            onLoaded = { setStatus("Collapsible banner shown ✓ (${position.name.lowercase()}) — tap the arrow to collapse") },
-            onFailed = { error -> setStatus("Collapsible banner failed: ${error.message}") },
+            collapsible = if (collapsible) BannerCollapsible.BOTTOM else null,
+            size = size,
+            onLoaded = {
+                val hint = if (collapsible) " — tap the arrow to collapse" else ""
+                setStatus("${label.replaceFirstChar { it.uppercase() }} shown ✓ (${size.name.lowercase()})$hint")
+            },
+            onFailed = { error -> setStatus("$label failed: ${error.message}") },
         )
     }
 
@@ -236,8 +245,11 @@ class MainActivity : AppCompatActivity() {
     private fun preloadNative() {
         if (!ensureReady()) return
         if (selectedAdType() == AdType.BANNER) {
-            BannerAdHelper.preload(this, BANNER_UNIT, count = 1)
-            setStatus("Preloading banner (unified view)…")
+            // Warm the SAME size the unified view will request, else the preloaded (adaptive) banner
+            // won't match the selected fixed size and the cache is bypassed.
+            val size = selectedBannerSize()
+            BannerAdHelper.preload(this, BANNER_UNIT, count = 1, size = size)
+            setStatus("Preloading banner (unified view, ${size.name.lowercase()})…")
         } else {
             NativeAdHelper.preload(NATIVE_UNIT, count = 1)
             setStatus("Preloading native…")
@@ -252,12 +264,14 @@ class MainActivity : AppCompatActivity() {
         if (!ensureReady()) return
         val adType = selectedAdType()
         if (adType == AdType.BANNER) {
-            setStatus("Showing banner (unified view)…")
+            val size = selectedBannerSize()
+            setStatus("Showing banner (unified view, ${size.name.lowercase()})…")
             nativeAdView.load(
                 adUnitId = BANNER_UNIT,
                 remoteEnabled = true,
                 adType = AdType.BANNER,
-                onLoaded = { setStatus("Banner shown ✓ (unified view)") },
+                bannerSize = size,
+                onLoaded = { setStatus("Banner shown ✓ (unified view, ${size.name.lowercase()})") },
                 onFailed = { setStatus("Banner failed to load") },
             )
             return
