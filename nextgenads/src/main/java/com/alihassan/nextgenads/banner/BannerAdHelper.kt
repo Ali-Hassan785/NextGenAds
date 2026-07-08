@@ -193,6 +193,9 @@ object BannerAdHelper {
         val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
             activity, bannerWidthDp(activity, container)
         )
+        // Size the shimmer to the banner's resolved height so the placeholder occupies exactly the
+        // slot the ad will fill — otherwise the container jumps when the (taller) ad swaps in.
+        shimmer.layoutParams = shimmer.layoutParams.apply { height = adSize.getHeightInPixels(activity) }
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.
         NextGenAds.whenInitialized {
             loadBannerWithRetry(

@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -40,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statsTable: TableLayout
     private lateinit var bannerContainer: FrameLayout
     private lateinit var nativeAdView: BannerNativeView
-    private lateinit var templateGroup: RadioGroup
+    private lateinit var templateGroup: ChipGroup
     private lateinit var adTypeGroup: RadioGroup
 
     /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
@@ -216,7 +217,7 @@ class MainActivity : AppCompatActivity() {
 
     // --- 3. Native ---------------------------------------------------------
 
-    private fun selectedTemplate(): NativeTemplate = when (templateGroup.checkedRadioButtonId) {
+    private fun selectedTemplate(): NativeTemplate = when (templateGroup.checkedChipId) {
         R.id.rbSmall -> NativeTemplate.SMALL
         R.id.rbLarge -> NativeTemplate.LARGE
         R.id.rbBanner -> NativeTemplate.BANNER
@@ -296,14 +297,14 @@ class MainActivity : AppCompatActivity() {
         val helper = Interstitials.get(INTERSTITIAL_UNIT)
         if (helper.isReady) {
             setStatus("Showing interstitial…")
-            helper.show(this) { setStatus("Interstitial dismissed ✓") }
+            helper.show(this, onDismiss = { setStatus("Interstitial dismissed ✓") })
             return
         }
         setStatus("Loading interstitial…")
         helper.load { success ->
             if (success) {
                 setStatus("Showing interstitial…")
-                helper.show(this) { setStatus("Interstitial dismissed ✓") }
+                helper.show(this, onDismiss = { setStatus("Interstitial dismissed ✓") })
             } else {
                 setStatus("Interstitial failed to load")
             }
@@ -312,22 +313,24 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Counter-gated interstitial: shows on the 1st click and then on every 4th click after that
-     * (clicks 1, 5, 9, 13 …). `forceLoad = true` loads an ad on demand at each gated-in click, so no
-     * ad is pre-warmed and — with [InterstitialAdHelper.autoReload] left off — none is requested
-     * after a dismiss. A request only ever happens at the moment an ad is about to be shown.
+     * (clicks 1, 5, 9, 13 …). The in-between clicks warm the cache via [Interstitials.preload] so the
+     * gated-in click has an ad ready and shows instantly; `forceLoad = true` is the fallback that
+     * loads on demand (bounded by a 5s timeout) if the preload hasn't landed yet — e.g. on the very
+     * first click, or after the splash interstitial consumed the same ad unit.
      */
     private fun showInterstitialByCounter() {
         if (!ensureReady()) return
         val helper = Interstitials.get(INTERSTITIAL_UNIT)
+        // Kick off a preload the moment the counter is first used, so even click #1 is warm.
+        if (!helper.isReady) Interstitials.preload(INTERSTITIAL_UNIT)
         counterClicks++
-        // forceLoad = true: on a gated-in click with no cached ad, load one on demand (behind the
-        // loading overlay) and show it rather than skipping — bounded by a 5s timeout.
         val shown = helper.showFirstThenEvery(this, nth = 4, forceLoad = true, timeoutMs = 5_000L) {
             val load = if (helper.lastLoadMs >= 0) " · loaded in ${helper.lastLoadMs}ms" else ""
             setStatus("Interstitial dismissed ✓ (click #$counterClicks$load)")
         }
         if (!shown) {
-            // A non-show click: don't request anything — the next gated-in click loads on demand.
+            // A non-show click: warm the next ad so the gated-in click shows without a load wait.
+            Interstitials.preload(INTERSTITIAL_UNIT)
             val nextShowAt = ((counterClicks - 1) / 4 + 1) * 4 + 1
             setStatus("Click #$counterClicks — next ad at click #$nextShowAt")
         }

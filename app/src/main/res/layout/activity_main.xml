@@ -174,82 +174,83 @@
                     android:layout_marginTop="12dp"
                     android:text="Template" />
 
-                <HorizontalScrollView
+                <!-- ChipGroup wraps to multiple lines, so every template is visible at once
+                     (a horizontal RadioGroup pushed Hero/Feed/Spotlight off-screen). singleSelection
+                     + selectionRequired gives the same one-of-N behaviour as a RadioGroup. -->
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/rgTemplate"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:scrollbars="none">
+                    app:chipSpacingHorizontal="8dp"
+                    app:selectionRequired="true"
+                    app:singleLine="false"
+                    app:singleSelection="true">
 
-                    <RadioGroup
-                        android:id="@+id/rgTemplate"
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSmall"
+                        style="@style/Widget.Material3.Chip.Filter"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                        android:text="Small" />
 
-                        <RadioButton
-                            android:id="@+id/rbSmall"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Small" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbMedium"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Medium" />
 
-                        <RadioButton
-                            android:id="@+id/rbMedium"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:checked="true"
-                            android:text="Medium" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbLarge"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Large" />
 
-                        <RadioButton
-                            android:id="@+id/rbLarge"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Large" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbBanner"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Banner" />
 
-                        <RadioButton
-                            android:id="@+id/rbBanner"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Banner" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbMediaLeft"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Media-left" />
 
-                        <RadioButton
-                            android:id="@+id/rbMediaLeft"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Media-left" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbCollapsible"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Collapsible" />
 
-                        <RadioButton
-                            android:id="@+id/rbCollapsible"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Collapsible" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbHero"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Hero" />
 
-                        <RadioButton
-                            android:id="@+id/rbHero"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Hero" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbFeed"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Feed" />
 
-                        <RadioButton
-                            android:id="@+id/rbFeed"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="12dp"
-                            android:text="Feed" />
-
-                        <RadioButton
-                            android:id="@+id/rbSpotlight"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Spotlight" />
-                    </RadioGroup>
-                </HorizontalScrollView>
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbSpotlight"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Spotlight" />
+                </com.google.android.material.chip.ChipGroup>
 
                 <Button
                     android:id="@+id/btnPreloadNative"

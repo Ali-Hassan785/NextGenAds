@@ -17,6 +17,7 @@
         android:indeterminateTint="@color/ngad_cta" />
 
     <TextView
+        android:id="@+id/ngad_ad_loading_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"

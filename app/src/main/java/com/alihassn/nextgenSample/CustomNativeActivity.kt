@@ -77,6 +77,7 @@ class CustomNativeActivity : AppCompatActivity() {
             desc.text = ad.body
             action.text = ad.callToAction ?: getString(R.string.demo_learn_more)
 
+
             // Fill the media slot so a mismatched aspect ratio doesn't leave grey letterbox bars.
             media?.imageScaleType = ImageView.ScaleType.CENTER_CROP
 

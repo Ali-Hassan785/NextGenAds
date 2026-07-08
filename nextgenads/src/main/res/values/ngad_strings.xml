@@ -5,6 +5,8 @@
     <string name="ngad_cta_default">Install</string>
     <!-- Collapsible template control. -->
     <string name="ngad_collapse_desc">Hide ad media</string>
-    <!-- Full-screen interlude shown briefly before an interstitial opens. -->
+    <!-- Full-screen loader text: shown while an ad is being fetched on demand. -->
     <string name="ngad_ad_loading">Loading ad…</string>
+    <!-- Full-screen loader text: shown for the brief interlude right before the ad opens. -->
+    <string name="ngad_ad_showing">Showing ad…</string>
 </resources>

@@ -9,6 +9,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
+import androidx.annotation.StringRes
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
@@ -70,10 +72,12 @@ class InterstitialAdHelper(private val adUnitId: String) {
     var minIntervalMs = 0L
 
     /**
-     * Duration (ms) of the full-screen "Loading ad…" interlude displayed before the interstitial
-     * opens, so the ad doesn't pop in abruptly. Set to `0` to show the ad immediately.
+     * Optional artificial dwell (ms) on a "Showing ad…" cover before an already-available ad opens,
+     * so it doesn't pop in abruptly. Defaults to `0` — a ready ad shows **instantly** (smoothest).
+     * This is separate from the "Loading ad…" cover [loadAndShow] shows while genuinely fetching an
+     * ad, which always appears (it hides real network latency, not an artificial delay).
      */
-    var loadingOverlayMs = 1000L
+    var loadingOverlayMs = 0L
 
     /** A non-expired ad is cached and ready to show. */
     val isReady: Boolean
@@ -202,10 +206,16 @@ class InterstitialAdHelper(private val adUnitId: String) {
             return
         }
 
+        // Always cover the genuine on-demand fetch — this isn't an artificial delay, it hides real
+        // network latency so the user isn't left on a frozen screen. show() reveals the ad the moment
+        // it loads (flipping the caption to "Showing ad…") and drops the cover when it renders.
+        val overlay = showLoadingOverlay(activity, R.string.ngad_ad_loading)
+
         var settled = false
         val timeoutRunnable = Runnable {
             if (settled) return@Runnable
             settled = true
+            overlay?.let { removeLoadingOverlay(it) }
             NextGenAds.log("Interstitial load timed out ($adUnitId); proceeding")
             onDismiss()
         }
@@ -218,8 +228,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
             // The activity may have died while the load was in flight — keep the ad cached for the
             // next trigger instead of burning it on a show that cannot render.
             if (loaded && interstitialAd != null && !activity.isFinishing && !activity.isDestroyed) {
-                show(activity, onDismiss)
+                show(activity, onDismiss, overlay)
             } else {
+                overlay?.let { removeLoadingOverlay(it) }
                 onDismiss()
             }
         }
@@ -229,11 +240,15 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * Shows the ad if one is ready, the frequency cap allows it and no other full-screen ad is on
      * screen, then preloads the next one. Must be called on the main thread.
      *
+     * @param preloadedOverlay a full-screen loader already on screen (e.g. the "Loading ad…" cover
+     *   raised by [loadAndShow] during the fetch). When non-null it is reused — its text is flipped
+     *   to "Showing ad…" for the interlude — so there's no remove/re-add flicker between phases.
      * @return `true` if the ad is being shown. When `false`, [onDismiss] has already been invoked
      *   synchronously so the caller can proceed immediately (no ad was available).
      */
-    fun show(activity: Activity, onDismiss: () -> Unit): Boolean {
+    fun show(activity: Activity, onDismiss: () -> Unit, preloadedOverlay: View? = null): Boolean {
         if (!NextGenAds.canShowAds()) {
+            preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
             return false
         }
@@ -242,6 +257,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         val now = SystemClock.elapsedRealtime()
         val capped = minIntervalMs > 0 && lastShownElapsed > 0 && now - lastShownElapsed < minIntervalMs
         if (ad == null || capped) {
+            preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
             if (autoReload) load() // opt-in: make the next attempt have an ad ready
             return false
@@ -249,6 +265,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         if (showing || !NextGenAds.tryBeginFullScreenShow()) {
             // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
             NextGenAds.log("Interstitial show skipped ($adUnitId): a full-screen ad is already showing")
+            preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
             return false
         }
@@ -257,7 +274,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         showing = true
         interstitialAd = null
 
-        var overlay: View? = null
+        var overlay: View? = preloadedOverlay
         fun dismissOverlay() {
             overlay?.let { removeLoadingOverlay(it) }
             overlay = null
@@ -316,16 +333,24 @@ class InterstitialAdHelper(private val adUnitId: String) {
         }
         NextGenAds.log("Interstitial show requested: $adUnitId")
         if (loadingOverlayMs <= 0) {
+            // No artificial dwell, but still bridge the show→render gap with the cover so the screen
+            // isn't left frozen while the SDK brings the ad up: reuse a carried-over loader (from a
+            // fetch) or raise one now, flip it to "Showing ad…", show immediately, and drop it the
+            // moment the ad renders (callbacks above).
+            overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
+                ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
             ad.show(activity)
             return true
         }
 
-        // Full-screen "Loading ad…" interlude: cover the screen for loadingOverlayMs, then open the
+        // Full-screen "Showing ad…" interlude: cover the screen for loadingOverlayMs, then open the
         // ad. The overlay is a view attached to the activity's own decor (not a separate Dialog
         // window) so it fills the whole screen and fades in smoothly with no window-handoff flash.
         // It stays up until the ad actually renders (removed in the shown/failed callbacks above) so
-        // the underlying screen never shows through.
-        overlay = showLoadingOverlay(activity)
+        // the underlying screen never shows through. Reuse loadAndShow's "Loading ad…" cover when it
+        // handed one in (flip its text) so there's no flicker between the two phases.
+        overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
+            ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
         handler.postDelayed({
             val appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED)
@@ -343,13 +368,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
     }
 
     /**
-     * Attaches a full-screen "Loading ad…" view to the activity's decor view and fades it in.
-     * Returns the attached view (or `null` if it couldn't be attached), to be passed to
-     * [removeLoadingOverlay] once the ad renders.
+     * Attaches a full-screen loader view (captioned with [textRes], e.g. "Loading ad…" /
+     * "Showing ad…") to the activity's decor view and fades it in. Returns the attached view (or
+     * `null` if it couldn't be attached), to be passed to [removeLoadingOverlay] once the ad renders.
      */
-    private fun showLoadingOverlay(activity: Activity): View? = runCatching {
+    private fun showLoadingOverlay(activity: Activity, @StringRes textRes: Int): View? = runCatching {
         val root = activity.window?.decorView as? ViewGroup ?: return null
         val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_ad_loading, root, false)
+        setOverlayText(view, textRes)
         view.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -364,6 +390,11 @@ class InterstitialAdHelper(private val adUnitId: String) {
         view.animate().alpha(1f).setDuration(OVERLAY_FADE_MS).start()
         view
     }.getOrNull()
+
+    /** Updates the caption on a loader raised by [showLoadingOverlay] (e.g. loading → showing). */
+    private fun setOverlayText(overlay: View, @StringRes textRes: Int) {
+        overlay.findViewById<TextView?>(R.id.ngad_ad_loading_text)?.setText(textRes)
+    }
 
     private fun removeLoadingOverlay(view: View) {
         if (view.parent !is ViewGroup) return
