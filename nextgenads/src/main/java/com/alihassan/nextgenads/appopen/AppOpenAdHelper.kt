@@ -180,11 +180,16 @@ class AppOpenAdHelper(private val adUnitId: String) {
      *
      * [onDismiss] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
      * or synchronously when ads are disabled / one is already showing.
+     *
+     * [canShow] is re-checked the instant the ad lands (before it is shown); if it returns `false`
+     * the ad is kept cached and [onDismiss] fires instead. The auto-show manager uses this to bail
+     * when the app was backgrounded during the fetch, so a late ad never pops over app content.
      */
     @JvmOverloads
     fun loadAndShow(
         activity: Activity,
         timeoutMs: Long = 0L,
+        canShow: () -> Boolean = { true },
         onDismiss: () -> Unit = {},
     ) {
         if (!NextGenAds.canShowAds() || showing) {
@@ -216,9 +221,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
             if (settled) return@load // timeout already let the caller proceed
             settled = true
             handler.removeCallbacks(timeoutRunnable)
-            // The activity may have died while the load was in flight — keep the ad cached for the
-            // next foreground instead of showing over a dead window.
-            if (loaded && isReady && !activity.isFinishing && !activity.isDestroyed) {
+            // The activity may have died — or the app may have been backgrounded ([canShow]) — while
+            // the load was in flight; keep the ad cached for the next foreground rather than showing
+            // over a dead window / app content.
+            if (loaded && isReady && !activity.isFinishing && !activity.isDestroyed && canShow()) {
                 show(activity, onDismiss, overlay)
             } else {
                 overlay?.let { removeLoadingOverlay(it) }
@@ -445,7 +451,7 @@ object AppOpenAds {
         adUnitId: String,
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
-    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
+    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss = onDismiss)
 }
 
 /**
@@ -575,22 +581,29 @@ class AppOpenAdManager private constructor(
             return
         }
 
-        // Nothing cached: request now, but only show if the ad lands inside the show window while
-        // the app is still foregrounded on an allowed activity. A late ad stays cached for the next
-        // return instead of popping over app content mid-session.
-        val epoch = foregroundEpoch
-        val deadline = SystemClock.elapsedRealtime() + loadTimeoutMs
-        helper.load { loaded ->
-            if (!loaded || !enabled) return@load
-            if (epoch != foregroundEpoch) return@load // app was backgrounded (or re-foregrounded) since
-            if (loadTimeoutMs <= 0L || SystemClock.elapsedRealtime() > deadline) {
-                NextGenAds.log("AppOpen loaded after the show window — cached for the next return")
-                return@load
-            }
-            val current = currentActivity.get() ?: return@load
-            if (current.isFinishing || current.isDestroyed || isSkipped(current)) return@load
-            helper.show(current)
+        // loadTimeoutMs == 0 means "warm the cache only, never show a late ad" — request without a
+        // cover and don't show on this return.
+        if (loadTimeoutMs <= 0L) {
+            helper.load()
+            return
         }
+
+        // Nothing cached: request now behind a "Loading ad…" cover, but only show if the ad lands
+        // inside the show window while the app is still foregrounded on an allowed activity. A late
+        // ad (past loadTimeoutMs) drops the cover and stays cached for the next return instead of
+        // popping over app content mid-session — loadAndShow handles both the cover and that timeout.
+        val epoch = foregroundEpoch
+        helper.loadAndShow(
+            activity = activity,
+            timeoutMs = loadTimeoutMs,
+            canShow = {
+                // Re-checked the instant the ad lands: still enabled, same foreground session, and the
+                // current activity is a live, non-skipped screen.
+                val current = currentActivity.get()
+                enabled && epoch == foregroundEpoch && current != null &&
+                    !current.isFinishing && !current.isDestroyed && !isSkipped(current)
+            },
+        )
     }
 
     /** Called by [ProcessLifecycleOwner] when the app leaves the foreground. */
