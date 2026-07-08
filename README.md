@@ -111,6 +111,55 @@ include(":app", ":nextgenads")
 dependencies { implementation(project(":nextgenads")) }
 ```
 
+**Or as a private dependency (GitHub Packages):**
+
+The library also publishes to a **private, authenticated** Maven repo on GitHub Packages, so you can
+consume it from your other apps without making it public. Auth uses your **GitHub username** and a
+**Personal Access Token (classic)** — GitHub Packages does not accept an arbitrary password.
+
+1. **Create a token** — on GitHub → *Settings → Developer settings → Personal access tokens →
+   Tokens (classic)* → generate one with the **`read:packages`** scope. Anyone consuming the private
+   dependency needs their own token with `read:packages` and read access to the repo.
+
+2. **Store the credentials outside the repo** — in `~/.gradle/gradle.properties` (global, never
+   committed), so no secret lands in any project's git history:
+
+   ```properties
+   gpr.user=alihassan
+   gpr.key=ghp_your_personal_access_token_here
+   ```
+
+3. **Add the private repo + dependency** in the consuming project:
+
+   ```kotlin
+   // settings.gradle.kts
+   dependencyResolutionManagement {
+       repositories {
+           google()
+           mavenCentral()
+           maven {
+               url = uri("https://maven.pkg.github.com/Ali-Hassan785/NextGenAds")
+               credentials {
+                   username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+                   password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+               }
+           }
+       }
+   }
+   ```
+   ```kotlin
+   // app/build.gradle.kts
+   dependencies {
+       implementation("com.github.Ali-Hassan785:nextgenads:1.0.2")
+   }
+   ```
+
+> In CI, set `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`) as secrets instead of
+> using `gradle.properties`. **Never** hard-code the token in a committed `build.gradle.kts`.
+>
+> Publishing a new version (maintainer, needs `write:packages`):
+> `./gradlew :nextgenads:publishReleasePublicationToGitHubPackagesRepository`.
+
 ### 2. Declare your AdMob app id in the manifest
 
 ```xml
