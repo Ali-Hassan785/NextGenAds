@@ -465,7 +465,9 @@ Behaviour, at a glance:
 | Ads disabled / premium | `onComplete` fires after `minDelayMs`; no request is made. |
 
 If you also use `AppOpenAdManager`, skip the splash so an app-open ad doesn't compete with the splash
-interstitial: `AppOpenAdManager.install(...).skipOn(SplashActivity::class.java)`.
+interstitial: `AppOpenAdManager.install(...).skipOn(SplashActivity::class.java)`. To instead show an
+**interstitial on a cold start and an app-open on a warm/hot start**, both on the splash, see
+[App-open on the launch splash](#app-open-on-the-launch-splash).
 
 ---
 
@@ -827,6 +829,70 @@ The first foreground after a cold start is skipped by default — set `showOnCol
 in. Pause auto-showing with `AppOpenAdManager.get()?.enabled = false`. Activities implementing
 `HideAppOpenAd` (or registered via `skipOn`) are never covered, and an app-open never stacks on
 another full-screen ad.
+
+### App-open on the launch splash
+
+Keep your **launch splash** as the single entry point and pick the ad by how the app was started:
+
+- **Cold start** (fresh process) → a **splash interstitial** (see [Splash screen](#splash-screen-splash-interstitial)).
+- **Warm / hot start** (relaunched while the process is still alive) → an **app-open** ad, shown on the splash.
+
+Tell them apart with a process-static flag — a fresh process resets it, so a relaunch after the app
+was killed by the system is correctly treated as cold again:
+
+```kotlin
+object LaunchState {
+    @Volatile private var coldUnconsumed = true
+
+    /** `true` exactly once per process (the cold start); `false` on every later warm/hot start. */
+    @Synchronized
+    fun consumeColdStart(): Boolean {
+        val cold = coldUnconsumed
+        coldUnconsumed = false
+        return cold
+    }
+}
+
+class SplashActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_splash)
+        val cold = LaunchState.consumeColdStart()
+
+        // Consent first, then initialize, then show the right ad on the splash.
+        ConsentManager.getInstance(this).gatherConsent(this) {
+            NextGenAds.initialize(this, APP_ID) {
+                val goToMain = { startActivity(Intent(this, MainActivity::class.java)); finish() }
+                if (cold) {
+                    // Cold: a splash interstitial (see the Splash screen section).
+                    SplashAd.show(this, INTERSTITIAL_UNIT, minDelayMs = 1_500L, timeoutMs = 8_000L) { goToMain() }
+                } else {
+                    // Warm / hot: an app-open ad, on the splash. onDismiss fires on close / timeout / no-ad.
+                    AppOpenAds.loadAndShow(this, APP_OPEN_UNIT, timeoutMs = 8_000L) { goToMain() }
+                }
+            }
+        }
+    }
+}
+```
+
+Still install `AppOpenAdManager` for **in-app** returns (e.g. via Recents — those don't pass through
+the splash), and add the splash to its skip list so the two never both fire on a launcher relaunch:
+
+```kotlin
+AppOpenAdManager.install(this, APP_OPEN_UNIT).skipOn(SplashActivity::class.java)
+```
+
+Because the manager skips `SplashActivity`, a warm relaunch shows the app-open **once** — from the
+splash — while the manager still covers ordinary foreground returns to your content. And since an
+app-open never stacks on another full-screen ad, a cold-start interstitial that's still on screen
+(e.g. the user backgrounded without dismissing it) just makes the warm app-open skip and proceed to
+your content.
+
+> Restore the cold/warm flag across a configuration-change recreation (save it in
+> `onSaveInstanceState`) so a rotation mid-splash doesn't flip the decision, and cancel any splash
+> "watchdog" the moment init completes — otherwise it can fire while the ad is on screen and launch
+> your main screen behind it.
 
 ### Manual control
 
