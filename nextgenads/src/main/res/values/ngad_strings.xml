@@ -9,4 +9,10 @@
     <string name="ngad_ad_loading">Loading ad…</string>
     <!-- Full-screen loader text: shown for the brief interlude right before the ad opens. -->
     <string name="ngad_ad_showing">Showing ad…</string>
+
+    <!-- App-open "Welcome back" cover: title + state subtitles shown before/while the ad opens. -->
+    <string name="ngad_welcome_title">Welcome back</string>
+    <string name="ngad_welcome_loading">Getting things ready…</string>
+    <string name="ngad_welcome_showing">Just a moment…</string>
+    <string name="ngad_welcome_icon_desc" translatable="false">App icon</string>
 </resources>

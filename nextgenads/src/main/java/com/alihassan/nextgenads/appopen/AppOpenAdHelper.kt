@@ -10,9 +10,10 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
-import androidx.annotation.StringRes
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -81,6 +82,26 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * ad, which always appears (it hides real network latency, not an artificial delay).
      */
     var loadingOverlayMs = 0L
+
+    /**
+     * Title on the "Welcome back" cover shown during the app-open flow. Set from the host app to
+     * localise / rebrand it (e.g. `AppOpenAds.get(unit).welcomeTitle = "Good to see you"`). `null`
+     * (default) falls back to the `ngad_welcome_title` string resource — which the app can also
+     * override by redeclaring that string.
+     */
+    var welcomeTitle: CharSequence? = null
+
+    /**
+     * Subtitle shown while an app-open ad is being fetched on demand. `null` (default) falls back to
+     * the `ngad_welcome_loading` string resource.
+     */
+    var loadingText: CharSequence? = null
+
+    /**
+     * Subtitle shown during the brief show→render bridge right before the ad opens. `null` (default)
+     * falls back to the `ngad_welcome_showing` string resource.
+     */
+    var showingText: CharSequence? = null
 
     /** `true` while an app-open ad is currently on screen. */
     val isShowing: Boolean
@@ -203,8 +224,8 @@ class AppOpenAdHelper(private val adUnitId: String) {
 
         // Always cover the genuine on-demand fetch — this isn't an artificial delay, it hides real
         // network latency so the user isn't left on a frozen screen. show() reveals the ad the moment
-        // it loads (flipping the caption to "Showing ad…") and drops the cover when it renders.
-        val overlay = showLoadingOverlay(activity, R.string.ngad_ad_loading)
+        // it loads (flipping the subtitle to "Just a moment…") and drops the cover when it renders.
+        val overlay = showLoadingOverlay(activity, activity.welcomeLoadingCaption())
 
         // Guard so the timeout and the load result can't both proceed.
         var settled = false
@@ -334,10 +355,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
         if (loadingOverlayMs <= 0) {
             // No artificial dwell, but still bridge the show→render gap with the cover so the screen
             // isn't left frozen while the SDK brings the ad up (app-open render is ~0.5–1s): reuse a
-            // carried-over loader (from a fetch) or raise one now, flip it to "Showing ad…", show
+            // carried-over cover (from a fetch) or raise one now, flip it to "Just a moment…", show
             // immediately, and drop it the moment the ad renders (callbacks above).
-            overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
-                ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
+            overlay = overlay?.also { setOverlayText(it, activity.welcomeShowingCaption()) }
+                ?: showLoadingOverlay(activity, activity.welcomeShowingCaption())
             ad.show(activity)
             return true
         }
@@ -346,10 +367,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
         // ad. The overlay is a view attached to the activity's own decor (not a separate Dialog
         // window) so it fills the whole screen and fades in smoothly with no window-handoff flash.
         // It stays up until the ad actually renders (removed in the shown/failed callbacks above) so
-        // the underlying screen never shows through. Reuse loadAndShow's "Loading ad…" cover when it
-        // handed one in (flip its text) so there's no flicker between the two phases.
-        overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
-            ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
+        // the underlying screen never shows through. Reuse loadAndShow's Welcome-back cover when it
+        // handed one in (flip its subtitle) so there's no flicker between the two phases.
+        overlay = overlay?.also { setOverlayText(it, activity.welcomeShowingCaption()) }
+            ?: showLoadingOverlay(activity, activity.welcomeShowingCaption())
         handler.postDelayed({
             val appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED)
@@ -366,15 +387,33 @@ class AppOpenAdHelper(private val adUnitId: String) {
         return true
     }
 
+    /** The fetch subtitle: the host-set [loadingText], or the `ngad_welcome_loading` resource. */
+    private fun Activity.welcomeLoadingCaption(): CharSequence =
+        loadingText ?: getString(R.string.ngad_welcome_loading)
+
+    /** The pre-show subtitle: the host-set [showingText], or the `ngad_welcome_showing` resource. */
+    private fun Activity.welcomeShowingCaption(): CharSequence =
+        showingText ?: getString(R.string.ngad_welcome_showing)
+
     /**
-     * Attaches a full-screen loader view (captioned with [textRes], e.g. "Loading ad…" /
-     * "Showing ad…") to the activity's decor view and fades it in. Returns the attached view (or
-     * `null` if it couldn't be attached), to be passed to [removeLoadingOverlay] once the ad renders.
+     * Attaches the full-screen "Welcome back" cover to the activity's decor view and fades it in.
+     * The cover is branded with the host app's own icon + the [welcomeTitle] (or "Welcome back"
+     * default); [caption] sets the state subtitle (e.g. "Getting things ready…" → "Just a moment…").
+     * Returns the attached view (or `null` if it couldn't be attached), to be passed to
+     * [removeLoadingOverlay] once the ad renders.
      */
-    private fun showLoadingOverlay(activity: Activity, @StringRes textRes: Int): View? = runCatching {
+    private fun showLoadingOverlay(activity: Activity, caption: CharSequence): View? = runCatching {
         val root = activity.window?.decorView as? ViewGroup ?: return null
-        val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_ad_loading, root, false)
-        setOverlayText(view, textRes)
+        val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_appopen_welcome, root, false)
+        setOverlayText(view, caption)
+        view.findViewById<TextView?>(R.id.ngad_appopen_title)?.text =
+            welcomeTitle ?: activity.getString(R.string.ngad_welcome_title)
+        // Brand the cover with the host app's launcher icon so it reads as the app itself, not an ad.
+        runCatching {
+            val pm = activity.packageManager
+            view.findViewById<ImageView?>(R.id.ngad_appopen_icon)
+                ?.setImageDrawable(pm.getApplicationIcon(activity.applicationInfo))
+        }
         view.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -387,12 +426,21 @@ class AppOpenAdHelper(private val adUnitId: String) {
         root.addView(view)
         view.bringToFront()
         view.animate().alpha(1f).setDuration(OVERLAY_FADE_MS).start()
+        // Gentle rise+settle on the brand block so the cover feels premium, not a hard cut.
+        view.findViewById<View?>(R.id.ngad_appopen_content)?.let { content ->
+            content.translationY = 16f * activity.resources.displayMetrics.density
+            content.animate()
+                .translationY(0f)
+                .setDuration(WELCOME_RISE_MS)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }
         view
     }.getOrNull()
 
-    /** Updates the caption on a loader raised by [showLoadingOverlay] (e.g. loading → showing). */
-    private fun setOverlayText(overlay: View, @StringRes textRes: Int) {
-        overlay.findViewById<TextView?>(R.id.ngad_ad_loading_text)?.setText(textRes)
+    /** Updates the state subtitle on the Welcome-back cover (e.g. loading → showing). */
+    private fun setOverlayText(overlay: View, caption: CharSequence) {
+        overlay.findViewById<TextView?>(R.id.ngad_appopen_subtitle)?.text = caption
     }
 
     private fun removeLoadingOverlay(view: View) {
@@ -423,6 +471,9 @@ class AppOpenAdHelper(private val adUnitId: String) {
 
         /** Fade duration (ms) for the loading overlay's enter/exit animation. */
         private const val OVERLAY_FADE_MS = 180L
+
+        /** Duration (ms) of the Welcome-back brand block's rise-and-settle entrance. */
+        private const val WELCOME_RISE_MS = 420L
     }
 }
 

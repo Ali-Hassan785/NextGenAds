@@ -10,7 +10,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.annotation.StringRes
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
@@ -78,6 +77,30 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * ad, which always appears (it hides real network latency, not an artificial delay).
      */
     var loadingOverlayMs = 0L
+
+    /**
+     * Minimum time (ms) the "Loading ad…" cover stays on screen during a genuine on-demand fetch
+     * (via [loadAndShow]) before the ad opens. A fast/warm fetch returns in a few frames, so without
+     * this floor the cover would fade in halfway and be torn straight down — reading as "a small
+     * delay then an ad" rather than a real loading state. This only *pads* a fetch that finished
+     * sooner than the floor; a slower fetch is never delayed, and a cached ad ([isReady]) still
+     * shows instantly. Set to `0` to disable the floor.
+     */
+    var minLoadingCoverMs = 500L
+
+    /**
+     * Caption shown on the loading cover while an ad is being fetched on demand. Set from the host
+     * app to localise / rebrand it (e.g. `Interstitials.get(unit).loadingText = "Preparing…"`).
+     * `null` (default) falls back to the `ngad_ad_loading` string resource — which the app can also
+     * override by redeclaring that string.
+     */
+    var loadingText: CharSequence? = null
+
+    /**
+     * Caption shown on the cover for the brief interlude right before the ad opens. `null` (default)
+     * falls back to the `ngad_ad_showing` string resource.
+     */
+    var showingText: CharSequence? = null
 
     /** A non-expired ad is cached and ready to show. */
     val isReady: Boolean
@@ -209,7 +232,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
         // Always cover the genuine on-demand fetch — this isn't an artificial delay, it hides real
         // network latency so the user isn't left on a frozen screen. show() reveals the ad the moment
         // it loads (flipping the caption to "Showing ad…") and drops the cover when it renders.
-        val overlay = showLoadingOverlay(activity, R.string.ngad_ad_loading)
+        val overlayRaisedAt = SystemClock.elapsedRealtime()
+        val overlay = showLoadingOverlay(activity, activity.loadingCaption())
 
         var settled = false
         val timeoutRunnable = Runnable {
@@ -228,7 +252,19 @@ class InterstitialAdHelper(private val adUnitId: String) {
             // The activity may have died while the load was in flight — keep the ad cached for the
             // next trigger instead of burning it on a show that cannot render.
             if (loaded && interstitialAd != null && !activity.isFinishing && !activity.isDestroyed) {
-                show(activity, onDismiss, overlay)
+                // Hold the "Loading ad…" cover for at least minLoadingCoverMs so a fast/warm fetch
+                // reads as a genuine loading state instead of a flash. A slow fetch already exceeded
+                // the floor and shows with no extra wait.
+                val remaining = minLoadingCoverMs - (SystemClock.elapsedRealtime() - overlayRaisedAt)
+                val reveal = Runnable {
+                    if (activity.isFinishing || activity.isDestroyed) {
+                        overlay?.let { removeLoadingOverlay(it) }
+                        onDismiss()
+                    } else {
+                        show(activity, onDismiss, overlay)
+                    }
+                }
+                if (remaining > 0) handler.postDelayed(reveal, remaining) else reveal.run()
             } else {
                 overlay?.let { removeLoadingOverlay(it) }
                 onDismiss()
@@ -337,8 +373,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
             // isn't left frozen while the SDK brings the ad up: reuse a carried-over loader (from a
             // fetch) or raise one now, flip it to "Showing ad…", show immediately, and drop it the
             // moment the ad renders (callbacks above).
-            overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
-                ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
+            overlay = overlay?.also { setOverlayText(it, activity.showingCaption()) }
+                ?: showLoadingOverlay(activity, activity.showingCaption())
             ad.show(activity)
             return true
         }
@@ -349,8 +385,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
         // It stays up until the ad actually renders (removed in the shown/failed callbacks above) so
         // the underlying screen never shows through. Reuse loadAndShow's "Loading ad…" cover when it
         // handed one in (flip its text) so there's no flicker between the two phases.
-        overlay = overlay?.also { setOverlayText(it, R.string.ngad_ad_showing) }
-            ?: showLoadingOverlay(activity, R.string.ngad_ad_showing)
+        overlay = overlay?.also { setOverlayText(it, activity.showingCaption()) }
+            ?: showLoadingOverlay(activity, activity.showingCaption())
         handler.postDelayed({
             val appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED)
@@ -367,15 +403,21 @@ class InterstitialAdHelper(private val adUnitId: String) {
         return true
     }
 
+    /** The fetch caption: the host-set [loadingText], or the `ngad_ad_loading` resource. */
+    private fun Activity.loadingCaption(): CharSequence = loadingText ?: getString(R.string.ngad_ad_loading)
+
+    /** The pre-show caption: the host-set [showingText], or the `ngad_ad_showing` resource. */
+    private fun Activity.showingCaption(): CharSequence = showingText ?: getString(R.string.ngad_ad_showing)
+
     /**
-     * Attaches a full-screen loader view (captioned with [textRes], e.g. "Loading ad…" /
+     * Attaches a full-screen loader view (captioned with [caption], e.g. "Loading ad…" /
      * "Showing ad…") to the activity's decor view and fades it in. Returns the attached view (or
      * `null` if it couldn't be attached), to be passed to [removeLoadingOverlay] once the ad renders.
      */
-    private fun showLoadingOverlay(activity: Activity, @StringRes textRes: Int): View? = runCatching {
+    private fun showLoadingOverlay(activity: Activity, caption: CharSequence): View? = runCatching {
         val root = activity.window?.decorView as? ViewGroup ?: return null
         val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_ad_loading, root, false)
-        setOverlayText(view, textRes)
+        setOverlayText(view, caption)
         view.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -392,8 +434,8 @@ class InterstitialAdHelper(private val adUnitId: String) {
     }.getOrNull()
 
     /** Updates the caption on a loader raised by [showLoadingOverlay] (e.g. loading → showing). */
-    private fun setOverlayText(overlay: View, @StringRes textRes: Int) {
-        overlay.findViewById<TextView?>(R.id.ngad_ad_loading_text)?.setText(textRes)
+    private fun setOverlayText(overlay: View, caption: CharSequence) {
+        overlay.findViewById<TextView?>(R.id.ngad_ad_loading_text)?.text = caption
     }
 
     private fun removeLoadingOverlay(view: View) {

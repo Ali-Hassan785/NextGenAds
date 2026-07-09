@@ -21,6 +21,9 @@ import com.alihassan.nextgenads.R
  *   drops naturally into a content feed.
  * - [SPOTLIGHT]   – centred composition (icon, headline, rating, body, media, CTA all centred) for
  *   dialogs and empty states.
+ * - [ACTION_TOP]  – call-to-action pinned at the top, with the icon, headline, advertiser, rating,
+ *   body and media stacked below it. For slots where the action should be first in reach (bottom
+ *   sheets opening upward, thumb-friendly footers).
  */
 enum class NativeTemplate(
     @field:LayoutRes @get:LayoutRes val layout: Int,
@@ -36,7 +39,8 @@ enum class NativeTemplate(
     // Creative templates — shimmer auto-generated from the layout (no shimmer XML needed).
     HERO(R.layout.ngad_native_hero),
     FEED(R.layout.ngad_native_feed),
-    SPOTLIGHT(R.layout.ngad_native_spotlight);
+    SPOTLIGHT(R.layout.ngad_native_spotlight),
+    ACTION_TOP(R.layout.ngad_native_action_top);
 
     companion object {
         /**
