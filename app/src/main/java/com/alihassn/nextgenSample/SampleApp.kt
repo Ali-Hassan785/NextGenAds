@@ -59,8 +59,35 @@ class SampleApp : Application() {
         // Google's official native test unit (matches MainActivity.NATIVE_UNIT).
         const val NATIVE_UNIT = "ca-app-pub-3940256099942544/2247696110"
 
+        // This device's test / hashed id. The Mobile Ads SDK ("Use RequestConfiguration.Builder()
+        // .setTestDeviceIds(...)") and UMP ("addTestDeviceHashedId(...)") log the SAME value, so one
+        // constant serves both: test ads AND forcing the UMP consent form (debug EEA geography only
+        // applies to a registered test device). Find yours in logcat on the first ad/consent request.
+        const val TEST_DEVICE_HASH = "B4033DAF1ECF925FC80FD0731246735E"
+
+        // Devices that always receive test ads. Passed to NextGenAds.initialize.
+        @JvmStatic
+        val TEST_DEVICE_IDS = listOf(TEST_DEVICE_HASH)
+
         /** App-wide fill/show-rate tracker; report via [ShowRateTracker.report]. */
         @JvmStatic
         val showRate = ShowRateTracker()
+
+        @Volatile
+        private var coldStartUnconsumed = true
+
+        /**
+         * Returns `true` exactly once per process — on the genuine cold start (fresh process) — and
+         * `false` on every later call (a warm / hot start while the process is still alive). Process
+         * death resets it, so a relaunch after the app was killed is treated as cold again. Used by
+         * [SplashActivity] to pick the splash ad: interstitial on cold, app-open on warm/hot.
+         */
+        @JvmStatic
+        @Synchronized
+        fun consumeColdStart(): Boolean {
+            val cold = coldStartUnconsumed
+            coldStartUnconsumed = false
+            return cold
+        }
     }
 }

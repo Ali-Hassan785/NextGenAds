@@ -160,14 +160,14 @@ class MainActivity : AppCompatActivity() {
     private fun gatherConsentAndInit() {
         // UMP debug facilities (test-device hash + forced EEA geography) must never reach release
         // builds — they would force the consent form on real users and skew ad serving.
-        val testDeviceHash = if (BuildConfig.DEBUG) "445FDBFFE2FFB7A0A4CA9ADF81FE4675" else null
+        val testDeviceHash = if (BuildConfig.DEBUG) SampleApp.TEST_DEVICE_HASH else null
         val consent = ConsentManager.getInstance(this, testDeviceHash)
 
         // Once consent has already been gathered (or isn't required), don't re-present the form on
         // subsequent button taps — just make sure the SDK is initialized and move on.
         if (consent.canRequestAds) {
             setStatus("Initializing SDK…")
-            NextGenAds.initialize(this, APP_ID) {
+            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
                 setStatus("Initialized ✓  — you can preload / show ads now")
             }
             return
@@ -183,7 +183,7 @@ class MainActivity : AppCompatActivity() {
                 return@gatherConsent
             }
             setStatus("Initializing SDK…")
-            NextGenAds.initialize(this, APP_ID) {
+            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
                 setStatus("Initialized ✓  — you can preload / show ads now")
             }
         }
