@@ -1,4 +1,13 @@
 <resources>
     <string name="app_name">NextGen</string>
     <string name="demo_learn_more">Learn more</string>
+
+    <!-- Custom copy for the module's full-screen ad covers, applied on the helpers at startup
+         (see SampleApp / MainActivity). Shows how a host project rebrands the default messages
+         without touching the module. Alternatively, redeclare the ngad_* strings to override them. -->
+    <string name="welcome_back_title">Welcome back</string>
+    <string name="welcome_back_loading">Warming things up…</string>
+    <string name="welcome_back_showing">Almost there…</string>
+    <string name="interstitial_loading">One moment…</string>
+    <string name="interstitial_showing">Here we go…</string>
 </resources>

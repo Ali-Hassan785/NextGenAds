@@ -51,6 +51,9 @@ class MainActivity : AppCompatActivity() {
     /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
     private var counterClicks = 0
 
+    /** Demo tally of rewards granted via the rewarded flow (a real app would credit the user). */
+    private var rewardBalance = 0
+
     /** Index of the show-rate (USE) column in the stats table — the cell we color by threshold. */
     private val useColumnIndex = ShowRateTracker.COLUMNS.indexOf("USE")
 
@@ -124,6 +127,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 4. Interstitial.
+        // The interstitial loading-cover copy is customisable from the host app (localise / rebrand).
+        // Leave a field unset to keep the module default, or override the ngad_ad_* string resources.
+        Interstitials.get(INTERSTITIAL_UNIT).apply {
+            loadingText = getString(R.string.interstitial_loading)
+            showingText = getString(R.string.interstitial_showing)
+        }
         findViewById<Button>(R.id.btnPreloadInterstitial).setOnClickListener { preloadInterstitial() }
         findViewById<Button>(R.id.btnShowInterstitial).setOnClickListener { showInterstitial() }
         findViewById<Button>(R.id.btnLoadShowInterstitial).setOnClickListener { loadAndShowInterstitial() }
@@ -238,6 +247,7 @@ class MainActivity : AppCompatActivity() {
         R.id.rbHero -> NativeTemplate.HERO
         R.id.rbFeed -> NativeTemplate.FEED
         R.id.rbSpotlight -> NativeTemplate.SPOTLIGHT
+        R.id.rbActionTop -> NativeTemplate.ACTION_TOP
         else -> NativeTemplate.MEDIUM
     }
 
@@ -312,20 +322,10 @@ class MainActivity : AppCompatActivity() {
     private fun loadAndShowInterstitial() {
         if (!ensureReady()) return
         val helper = Interstitials.get(INTERSTITIAL_UNIT)
-        if (helper.isReady) {
-            setStatus("Showing interstitial…")
-            helper.show(this, onDismiss = { setStatus("Interstitial dismissed ✓") })
-            return
-        }
-        setStatus("Loading interstitial…")
-        helper.load { success ->
-            if (success) {
-                setStatus("Showing interstitial…")
-                helper.show(this, onDismiss = { setStatus("Interstitial dismissed ✓") })
-            } else {
-                setStatus("Interstitial failed to load")
-            }
-        }
+        setStatus(if (helper.isReady) "Showing interstitial…" else "Loading interstitial…")
+        // loadAndShow raises the full-screen loading cover over the real on-demand fetch (instead of
+        // the bare status line load { … } left the screen on), then shows the ad the moment it lands.
+        helper.loadAndShow(this, timeoutMs = 8_000L) { setStatus("Interstitial dismissed ✓") }
     }
 
     /**
@@ -357,8 +357,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun preloadRewarded() {
         if (!ensureReady()) return
-        RewardedAds.preload(REWARDED_UNIT)
         setStatus("Preloading rewarded…")
+        // Report the load result back to the UI instead of firing the preload blind.
+        RewardedAds.get(REWARDED_UNIT).load { loaded ->
+            setStatus(if (loaded) "Rewarded preloaded ✓ — ready to show" else "Rewarded preload failed")
+        }
     }
 
     /** Asks the user to opt in, then shows a preloaded rewarded ad — or loads a fresh one on demand. */
@@ -375,16 +378,23 @@ class MainActivity : AppCompatActivity() {
                     activity = this,
                     timeoutMs = 10_000L,
                     onReward = { reward ->
+                        // Fires only when the user actually earns it. Grant the reward here — this
+                        // demo just tallies a balance; a real app would credit the user's account.
                         earned = true
-                        setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
+                        rewardBalance += reward.amount
+                        setStatus("Reward earned ✓ +${reward.amount} ${reward.type} (balance: $rewardBalance)")
                         MaterialAlertDialogBuilder(this)
                             .setTitle("Reward earned 🎉")
-                            .setMessage("You earned ${reward.amount} ${reward.type}.")
+                            .setMessage("You earned ${reward.amount} ${reward.type}.\nNew balance: $rewardBalance.")
                             .setPositiveButton("OK", null)
                             .show()
                     },
                     onDismiss = {
-                        if (!earned) setStatus("Rewarded closed — no reward")
+                        // Always fires when the ad closes — distinguish "earned" from "closed early".
+                        setStatus(
+                            if (earned) "Rewarded closed — reward granted ✓ (balance: $rewardBalance)"
+                            else "Rewarded closed — no reward",
+                        )
                     },
                 )
             }
@@ -396,8 +406,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun preloadRewardedInterstitial() {
         if (!ensureReady()) return
-        RewardedInterstitials.preload(REWARDED_INT_UNIT)
         setStatus("Preloading rewarded interstitial…")
+        // Report the load result back to the UI instead of firing the preload blind.
+        RewardedInterstitials.get(REWARDED_INT_UNIT).load { loaded ->
+            setStatus(
+                if (loaded) "Rewarded interstitial preloaded ✓ — ready to show"
+                else "Rewarded interstitial preload failed",
+            )
+        }
     }
 
     /** Asks the user to opt in, then shows a preloaded rewarded interstitial — or loads a fresh one. */
@@ -414,16 +430,23 @@ class MainActivity : AppCompatActivity() {
                     activity = this,
                     timeoutMs = 10_000L,
                     onReward = { reward ->
+                        // Fires only when the user actually earns it. Grant the reward here — this
+                        // demo just tallies a balance; a real app would credit the user's account.
                         earned = true
-                        setStatus("Reward earned ✓ ${reward.amount} ${reward.type}")
+                        rewardBalance += reward.amount
+                        setStatus("Reward earned ✓ +${reward.amount} ${reward.type} (balance: $rewardBalance)")
                         MaterialAlertDialogBuilder(this)
                             .setTitle("Reward earned 🎉")
-                            .setMessage("You earned ${reward.amount} ${reward.type}.")
+                            .setMessage("You earned ${reward.amount} ${reward.type}.\nNew balance: $rewardBalance.")
                             .setPositiveButton("OK", null)
                             .show()
                     },
                     onDismiss = {
-                        if (!earned) setStatus("Rewarded interstitial closed — no reward")
+                        // Always fires when the ad closes — distinguish "earned" from "closed early".
+                        setStatus(
+                            if (earned) "Rewarded interstitial closed — reward granted ✓ (balance: $rewardBalance)"
+                            else "Rewarded interstitial closed — no reward",
+                        )
                     },
                 )
             }

@@ -3,6 +3,7 @@ package com.alihassn.nextgenSample
 import android.app.Application
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.appopen.AppOpenAdManager
+import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.events.ShowRateTracker
 
 /**
@@ -40,6 +41,15 @@ class SampleApp : Application() {
         // Skip the splash so its interstitial is the only ad shown on open (no app-open competes).
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
             .skipOn(SplashActivity::class.java)
+
+        // The full-screen "Welcome back" cover's copy is customisable from the host app — localise or
+        // rebrand it here. This targets the same helper the manager auto-shows. Any field left unset
+        // keeps the module default; you can alternatively override the ngad_welcome_* string resources.
+        AppOpenAds.get(APP_OPEN_UNIT).apply {
+            welcomeTitle = getString(R.string.welcome_back_title)
+            loadingText = getString(R.string.welcome_back_loading)
+            showingText = getString(R.string.welcome_back_showing)
+        }
     }
 
     companion object {
