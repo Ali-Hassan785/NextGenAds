@@ -357,13 +357,6 @@ object NextGenAds {
             if (!initializing.compareAndSet(false, true)) return
         }
 
-        // Request configuration must be applied before initialization.
-        if (testDeviceIds.isNotEmpty()) {
-            MobileAds.setRequestConfiguration(
-                RequestConfiguration.Builder().setTestDeviceIds(testDeviceIds).build()
-            )
-        }
-
         val appContext = context.applicationContext
         // The Next-Gen SDK requires initialization off the main thread to avoid ANRs.
         Thread({
@@ -371,6 +364,15 @@ object NextGenAds {
                 MobileAds.initialize(appContext, InitializationConfig.Builder(appId).build()) {
                     initialized = true
                     initializing.set(false)
+                    // Test-device config must be applied AFTER initialize on the Next-Gen SDK — calling
+                    // setRequestConfiguration before init throws "MobileAds.initialize must be called
+                    // first". Apply it here, before the queued callbacks / warmUp fire a request, so
+                    // those first ad loads already serve test ads.
+                    if (testDeviceIds.isNotEmpty()) {
+                        MobileAds.setRequestConfiguration(
+                            RequestConfiguration.Builder().setTestDeviceIds(testDeviceIds).build()
+                        )
+                    }
                     log("GMA Next-Gen SDK initialized")
                     val callbacks: List<Runnable>
                     synchronized(this) {

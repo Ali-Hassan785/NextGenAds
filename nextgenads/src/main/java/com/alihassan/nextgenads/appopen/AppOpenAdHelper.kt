@@ -605,6 +605,16 @@ class AppOpenAdManager private constructor(
      */
     private var foregroundEpoch = 0
 
+    /**
+     * The [foregroundEpoch] for which an app-open show is armed but not yet placed, because the
+     * foreground activity at [onStart] was transient (null mid-transition, or a finishing splash on
+     * a warm relaunch). It is retried on each [onActivityResumed] / [onActivityStarted] and fires
+     * once a real, non-skipped activity is up — so a warm return through a self-finishing splash
+     * still shows the ad over the actual content instead of skipping it or rendering behind the
+     * finishing screen. `-1` means nothing is pending. Main thread only.
+     */
+    private var pendingShowEpoch = -1
+
     init {
         application.registerActivityLifecycleCallbacks(this)
         // Lifecycle.addObserver enforces the main thread — marshal so install() is thread-agnostic.
@@ -617,28 +627,53 @@ class AppOpenAdManager private constructor(
         foregroundEpoch++
         val wasCold = coldStart
         coldStart = false
+        pendingShowEpoch = -1
         if (!enabled || !NextGenAds.canShowAds()) return
         // The first foreground of a cold start is NOT a return-from-background — request nothing.
         if (wasCold && !showOnColdStart) return
-        val activity = currentActivity.get() ?: return
+        // Arm the show for this foreground session and try now. If the foreground activity is still
+        // transient (null mid-transition, or a finishing splash on a warm relaunch), the attempt is
+        // deferred and retried from onActivityResumed / onActivityStarted, so the ad lands over the
+        // real content rather than being skipped or drawn behind the finishing screen.
+        pendingShowEpoch = foregroundEpoch
+        tryPendingShow()
+    }
+
+    /**
+     * Places the armed foreground show once a real activity is up. No-ops if nothing is pending for
+     * the current session, or while the resolved activity is transient (absent / finishing /
+     * destroyed) — leaving it pending for the next resume. A genuinely displayed skipped screen
+     * (e.g. a paywall the user opened) consumes the pending show without displaying an ad.
+     */
+    private fun tryPendingShow() {
+        if (pendingShowEpoch != foregroundEpoch) return
+        if (!enabled || !NextGenAds.canShowAds()) return
+        val activity = currentActivity.get()
+        // Not settled yet — wait for the next onActivityResumed / onActivityStarted.
+        if (activity == null || activity.isFinishing || activity.isDestroyed) return
         if (isSkipped(activity)) {
+            // A real, non-finishing skipped screen: respect the skip and don't keep waiting.
+            pendingShowEpoch = -1
             NextGenAds.log("AppOpen skipped on ${activity.javaClass.simpleName}")
             return
         }
+        pendingShowEpoch = -1
+        showOrLoad(activity)
+    }
 
+    /** Shows a cached ad instantly over [activity], or requests one behind the loading cover. */
+    private fun showOrLoad(activity: Activity) {
         // Cached ad ready: the ideal path — show instantly over the returning activity.
         if (helper.isReady) {
             helper.show(activity)
             return
         }
-
         // loadTimeoutMs == 0 means "warm the cache only, never show a late ad" — request without a
         // cover and don't show on this return.
         if (loadTimeoutMs <= 0L) {
             helper.load()
             return
         }
-
         // Nothing cached: request now behind a "Loading ad…" cover, but only show if the ad lands
         // inside the show window while the app is still foregrounded on an allowed activity. A late
         // ad (past loadTimeoutMs) drops the cover and stays cached for the next return instead of
@@ -660,14 +695,17 @@ class AppOpenAdManager private constructor(
     /** Called by [ProcessLifecycleOwner] when the app leaves the foreground. */
     override fun onStop(owner: LifecycleOwner) {
         foregroundEpoch++ // invalidate any pending show-on-load from this session
+        pendingShowEpoch = -1
     }
 
     override fun onActivityResumed(activity: Activity) {
         currentActivity = WeakReference(activity)
+        tryPendingShow()
     }
 
     override fun onActivityStarted(activity: Activity) {
         currentActivity = WeakReference(activity)
+        tryPendingShow()
     }
 
     override fun onActivityPaused(activity: Activity) {

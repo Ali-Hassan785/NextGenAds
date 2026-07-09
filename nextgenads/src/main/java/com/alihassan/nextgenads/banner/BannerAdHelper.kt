@@ -267,7 +267,14 @@ object BannerAdHelper {
         // fixed size, also match its width so the (centered) placeholder has the ad's exact footprint
         // instead of a full-width block that collapses to a narrow ad; adaptive banners stay full-width.
         shimmer.layoutParams = shimmer.layoutParams.apply {
-            height = adSize.getHeightInPixels(activity)
+            // Inline adaptive reports its MAXIMUM height (often near the screen height), so sizing the
+            // shimmer to it reserves a huge block. Reserve the anchored-adaptive height instead — the
+            // real inline ad is usually about that tall — and let the container settle when it loads.
+            height = if (size == BannerSize.ADAPTIVE_INLINE) {
+                BannerSize.ADAPTIVE.resolve(activity, widthDp).getHeightInPixels(activity)
+            } else {
+                adSize.getHeightInPixels(activity)
+            }
             if (!size.isAdaptive) width = adSize.getWidthInPixels(activity)
         }
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.

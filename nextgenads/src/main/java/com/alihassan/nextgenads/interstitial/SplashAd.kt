@@ -4,6 +4,8 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
 
 /**
@@ -103,6 +105,14 @@ object SplashAd {
                 if (activity.isFinishing || activity.isDestroyed) {
                     // Splash already gone; keep the ad cached rather than showing into nothing.
                     finishOnce()
+                    return@postDelayed
+                }
+                // Only pop the interstitial while the app is actually resumed in the foreground. If it
+                // was backgrounded during the splash, showing now would surface the ad on the user's
+                // return — when they expect an app-open ad, not this cold-start interstitial. Keep it
+                // cached and leave navigation to the host (its foreground-return path routes to Main).
+                if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    NextGenAds.log("SplashAd: app not resumed (backgrounded during splash) — not showing: $adUnitId")
                     return@postDelayed
                 }
                 // show() calls onComplete via its dismiss callback; if it can't show, proceed now.
