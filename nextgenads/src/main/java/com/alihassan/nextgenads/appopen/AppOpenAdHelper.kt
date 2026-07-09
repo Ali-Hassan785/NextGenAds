@@ -31,6 +31,19 @@ import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 
+/** Which full-screen cover the app-open flow raises to bridge the show→render gap. */
+enum class AppOpenCoverStyle {
+    /** Branded "Welcome back" cover — app icon + [AppOpenAdHelper.welcomeTitle]. The default. */
+    WELCOME,
+
+    /**
+     * Plain "Loading ad…" cover — the same minimal spinner the interstitial loader uses, with no
+     * branding. Use it on a splash (see `SplashAppOpenAd`), where a branded "Welcome back" would be
+     * out of place and only a loading indicator is wanted.
+     */
+    LOADING,
+}
+
 /**
  * Loads and shows a single app-open ad unit (Next-Gen SDK) with automatic preloading and
  * exponential-backoff retries. App-open ads are the full-screen ads shown while the app is being
@@ -202,6 +215,9 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * [onDismiss] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
      * or synchronously when ads are disabled / one is already showing.
      *
+     * [coverStyle] picks the full-screen cover used while fetching and bridging to the ad: the branded
+     * [AppOpenCoverStyle.WELCOME] (default) or the plain [AppOpenCoverStyle.LOADING] spinner.
+     *
      * [canShow] is re-checked the instant the ad lands (before it is shown); if it returns `false`
      * the ad is kept cached and [onDismiss] fires instead. The auto-show manager uses this to bail
      * when the app was backgrounded during the fetch, so a late ad never pops over app content.
@@ -210,6 +226,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
     fun loadAndShow(
         activity: Activity,
         timeoutMs: Long = 0L,
+        coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
         canShow: () -> Boolean = { true },
         onDismiss: () -> Unit = {},
     ) {
@@ -218,14 +235,15 @@ class AppOpenAdHelper(private val adUnitId: String) {
             return
         }
         if (isReady) {
-            show(activity, onDismiss)
+            show(activity, onDismiss, coverStyle = coverStyle)
             return
         }
 
         // Always cover the genuine on-demand fetch — this isn't an artificial delay, it hides real
         // network latency so the user isn't left on a frozen screen. show() reveals the ad the moment
-        // it loads (flipping the subtitle to "Just a moment…") and drops the cover when it renders.
-        val overlay = showLoadingOverlay(activity, activity.welcomeLoadingCaption())
+        // it loads (flipping the caption to "Just a moment…") and drops the cover when it renders. The
+        // [coverStyle] picks the branded Welcome-back cover or the plain "Loading ad…" one.
+        val overlay = showLoadingOverlay(activity, activity.welcomeLoadingCaption(), coverStyle)
 
         // Guard so the timeout and the load result can't both proceed.
         var settled = false
@@ -261,12 +279,24 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * @param preloadedOverlay a full-screen loader already on screen (e.g. the "Loading ad…" cover
      *   raised by [loadAndShow] during the fetch). When non-null it is reused — its text is flipped
      *   to "Showing ad…" for the interlude — so there's no remove/re-add flicker between phases.
+     * @param showCover when `true` (default) a full-screen cover bridges the show→render gap. Pass
+     *   `false` when the caller's own screen already covers that gap and any cover would be redundant.
+     *   Ignored when [preloadedOverlay] is supplied (that cover is always reused).
+     * @param coverStyle which cover to raise when [showCover] is on: the branded [AppOpenCoverStyle.WELCOME]
+     *   (default) or the plain [AppOpenCoverStyle.LOADING] spinner — e.g. a splash gate uses `LOADING`
+     *   so a "Welcome back" cover never appears on the splash.
      * @return `true` if the ad is being shown. When `false`, [onDismiss] has already been invoked
      *   synchronously so the caller can proceed immediately (no ad was available), and a fresh load
      *   has been kicked off.
      */
     @JvmOverloads
-    fun show(activity: Activity, onDismiss: () -> Unit = {}, preloadedOverlay: View? = null): Boolean {
+    fun show(
+        activity: Activity,
+        onDismiss: () -> Unit = {},
+        preloadedOverlay: View? = null,
+        showCover: Boolean = true,
+        coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
+    ): Boolean {
         if (!NextGenAds.canShowAds() || showing) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
@@ -356,9 +386,11 @@ class AppOpenAdHelper(private val adUnitId: String) {
             // No artificial dwell, but still bridge the show→render gap with the cover so the screen
             // isn't left frozen while the SDK brings the ad up (app-open render is ~0.5–1s): reuse a
             // carried-over cover (from a fetch) or raise one now, flip it to "Just a moment…", show
-            // immediately, and drop it the moment the ad renders (callbacks above).
+            // immediately, and drop it the moment the ad renders (callbacks above). A caller that owns
+            // the screen (splash) can opt out via showCover=false, or pick the plain LOADING cover so
+            // no "Welcome back" cover appears.
             overlay = overlay?.also { setOverlayText(it, activity.welcomeShowingCaption()) }
-                ?: showLoadingOverlay(activity, activity.welcomeShowingCaption())
+                ?: if (showCover) showLoadingOverlay(activity, activity.welcomeShowingCaption(), coverStyle) else null
             ad.show(activity)
             return true
         }
@@ -368,9 +400,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
         // window) so it fills the whole screen and fades in smoothly with no window-handoff flash.
         // It stays up until the ad actually renders (removed in the shown/failed callbacks above) so
         // the underlying screen never shows through. Reuse loadAndShow's Welcome-back cover when it
-        // handed one in (flip its subtitle) so there's no flicker between the two phases.
+        // handed one in (flip its subtitle) so there's no flicker between the two phases. A caller
+        // that owns the screen (splash) can opt out via showCover=false, or pick the plain LOADING cover.
         overlay = overlay?.also { setOverlayText(it, activity.welcomeShowingCaption()) }
-            ?: showLoadingOverlay(activity, activity.welcomeShowingCaption())
+            ?: if (showCover) showLoadingOverlay(activity, activity.welcomeShowingCaption(), coverStyle) else null
         handler.postDelayed({
             val appInForeground = ProcessLifecycleOwner.get().lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED)
@@ -396,23 +429,35 @@ class AppOpenAdHelper(private val adUnitId: String) {
         showingText ?: getString(R.string.ngad_welcome_showing)
 
     /**
-     * Attaches the full-screen "Welcome back" cover to the activity's decor view and fades it in.
-     * The cover is branded with the host app's own icon + the [welcomeTitle] (or "Welcome back"
-     * default); [caption] sets the state subtitle (e.g. "Getting things ready…" → "Just a moment…").
+     * Attaches a full-screen cover to the activity's decor view and fades it in. For
+     * [AppOpenCoverStyle.WELCOME] the cover is branded with the host app's own icon + the
+     * [welcomeTitle]; for [AppOpenCoverStyle.LOADING] it's the plain "Loading ad…" spinner with no
+     * branding. [caption] sets the state subtitle (e.g. "Getting things ready…" → "Just a moment…").
      * Returns the attached view (or `null` if it couldn't be attached), to be passed to
      * [removeLoadingOverlay] once the ad renders.
      */
-    private fun showLoadingOverlay(activity: Activity, caption: CharSequence): View? = runCatching {
+    private fun showLoadingOverlay(
+        activity: Activity,
+        caption: CharSequence,
+        style: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
+    ): View? = runCatching {
         val root = activity.window?.decorView as? ViewGroup ?: return null
-        val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_appopen_welcome, root, false)
+        val layoutRes = when (style) {
+            AppOpenCoverStyle.WELCOME -> R.layout.ngad_view_appopen_welcome
+            AppOpenCoverStyle.LOADING -> R.layout.ngad_view_ad_loading
+        }
+        val view = LayoutInflater.from(activity).inflate(layoutRes, root, false)
         setOverlayText(view, caption)
-        view.findViewById<TextView?>(R.id.ngad_appopen_title)?.text =
-            welcomeTitle ?: activity.getString(R.string.ngad_welcome_title)
-        // Brand the cover with the host app's launcher icon so it reads as the app itself, not an ad.
-        runCatching {
-            val pm = activity.packageManager
-            view.findViewById<ImageView?>(R.id.ngad_appopen_icon)
-                ?.setImageDrawable(pm.getApplicationIcon(activity.applicationInfo))
+        // Branding is Welcome-only; the plain LOADING cover is just a spinner + caption.
+        if (style == AppOpenCoverStyle.WELCOME) {
+            view.findViewById<TextView?>(R.id.ngad_appopen_title)?.text =
+                welcomeTitle ?: activity.getString(R.string.ngad_welcome_title)
+            // Brand the cover with the host app's launcher icon so it reads as the app itself, not an ad.
+            runCatching {
+                val pm = activity.packageManager
+                view.findViewById<ImageView?>(R.id.ngad_appopen_icon)
+                    ?.setImageDrawable(pm.getApplicationIcon(activity.applicationInfo))
+            }
         }
         view.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -426,7 +471,8 @@ class AppOpenAdHelper(private val adUnitId: String) {
         root.addView(view)
         view.bringToFront()
         view.animate().alpha(1f).setDuration(OVERLAY_FADE_MS).start()
-        // Gentle rise+settle on the brand block so the cover feels premium, not a hard cut.
+        // Gentle rise+settle on the brand block so the cover feels premium, not a hard cut. Only the
+        // Welcome layout has this block; on the plain LOADING cover the lookup is null (no-op).
         view.findViewById<View?>(R.id.ngad_appopen_content)?.let { content ->
             content.translationY = 16f * activity.resources.displayMetrics.density
             content.animate()
@@ -438,9 +484,14 @@ class AppOpenAdHelper(private val adUnitId: String) {
         view
     }.getOrNull()
 
-    /** Updates the state subtitle on the Welcome-back cover (e.g. loading → showing). */
+    /**
+     * Updates the state subtitle on a cover raised by [showLoadingOverlay] (e.g. loading → showing).
+     * Works for both cover layouts — the Welcome cover's subtitle and the plain loader's caption.
+     */
     private fun setOverlayText(overlay: View, caption: CharSequence) {
-        overlay.findViewById<TextView?>(R.id.ngad_appopen_subtitle)?.text = caption
+        val label = overlay.findViewById<TextView?>(R.id.ngad_appopen_subtitle)
+            ?: overlay.findViewById<TextView?>(R.id.ngad_ad_loading_text)
+        label?.text = caption
     }
 
     private fun removeLoadingOverlay(view: View) {
@@ -566,6 +617,14 @@ class AppOpenAdManager private constructor(
     var showOnColdStart = false
 
     /**
+     * Which full-screen cover to raise while showing the auto app-open: the branded
+     * [AppOpenCoverStyle.WELCOME] (default) or the plain [AppOpenCoverStyle.LOADING] spinner. Set it
+     * to `LOADING` if you don't want the "Welcome back" cover on foreground returns.
+     */
+    @Volatile
+    var coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME
+
+    /**
      * Excludes [activities] from the auto-shown app-open ad — foregrounding onto any of them keeps
      * the cached ad for the next allowed screen instead of showing it. Returns `this` for chaining
      * off [install]. For activities you own, implementing [HideAppOpenAd] works without
@@ -665,7 +724,7 @@ class AppOpenAdManager private constructor(
     private fun showOrLoad(activity: Activity) {
         // Cached ad ready: the ideal path — show instantly over the returning activity.
         if (helper.isReady) {
-            helper.show(activity)
+            helper.show(activity, coverStyle = coverStyle)
             return
         }
         // loadTimeoutMs == 0 means "warm the cache only, never show a late ad" — request without a
@@ -682,6 +741,7 @@ class AppOpenAdManager private constructor(
         helper.loadAndShow(
             activity = activity,
             timeoutMs = loadTimeoutMs,
+            coverStyle = coverStyle,
             canShow = {
                 // Re-checked the instant the ad lands: still enabled, same foreground session, and the
                 // current activity is a live, non-skipped screen.

@@ -38,7 +38,10 @@ class SampleApp : Application() {
         // HideAppOpenAd or skipOn(...), e.g.:
         //   AppOpenAdManager.install(this, APP_OPEN_UNIT)
         //       .skipOn(SplashActivity::class.java, PaywallActivity::class.java)
-        // Skip the splash so its interstitial is the only ad shown on open (no app-open competes).
+        // Skip the splash so its own ad is the only one shown there (no app-open competes). On a
+        // Recents/home return the manager shows the app-open with its default branded "Welcome back"
+        // cover; the splash app-open (SplashAppOpenAd) uses the plain "Loading ad…" cover instead, so
+        // "Welcome back" only ever appears on a normal return, never on the splash.
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
             .skipOn(SplashActivity::class.java)
 
@@ -64,30 +67,14 @@ class SampleApp : Application() {
         // constant serves both: test ads AND forcing the UMP consent form (debug EEA geography only
         // applies to a registered test device). Find yours in logcat on the first ad/consent request.
         const val TEST_DEVICE_HASH = "B4033DAF1ECF925FC80FD0731246735E"
+        const val TEST_DEVICE_HASH1 = "445FDBFFE2FFB7A0A4CA9ADF81FE4675"
 
         // Devices that always receive test ads. Passed to NextGenAds.initialize.
         @JvmStatic
-        val TEST_DEVICE_IDS = listOf(TEST_DEVICE_HASH)
+        val TEST_DEVICE_IDS = listOf(TEST_DEVICE_HASH,TEST_DEVICE_HASH1)
 
         /** App-wide fill/show-rate tracker; report via [ShowRateTracker.report]. */
         @JvmStatic
         val showRate = ShowRateTracker()
-
-        @Volatile
-        private var coldStartUnconsumed = true
-
-        /**
-         * Returns `true` exactly once per process — on the genuine cold start (fresh process) — and
-         * `false` on every later call (a warm / hot start while the process is still alive). Process
-         * death resets it, so a relaunch after the app was killed is treated as cold again. Used by
-         * [SplashActivity] to pick the splash ad: interstitial on cold, app-open on warm/hot.
-         */
-        @JvmStatic
-        @Synchronized
-        fun consumeColdStart(): Boolean {
-            val cold = coldStartUnconsumed
-            coldStartUnconsumed = false
-            return cold
-        }
     }
 }
