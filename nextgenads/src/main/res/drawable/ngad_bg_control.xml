@@ -2,5 +2,5 @@
 <!-- Soft circular backing for the collapse / close controls so they have a comfortable tap target
      and read as buttons over the card. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <solid android:color="@color/ngad_control_bg" />
+    <solid android:color="?attr/colorSurfaceVariant" />
 </shape>

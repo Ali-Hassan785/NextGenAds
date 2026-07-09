@@ -60,7 +60,7 @@
                     android:ellipsize="end"
                     android:fontFamily="sans-serif-medium"
                     android:maxLines="1"
-                    android:textColor="@color/ngad_headline"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp" />
             </LinearLayout>
 
@@ -72,7 +72,7 @@
                 android:ellipsize="end"
                 android:fontFamily="sans-serif"
                 android:maxLines="1"
-                android:textColor="@color/ngad_body"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="11sp" />
         </LinearLayout>
 

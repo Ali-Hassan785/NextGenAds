@@ -50,7 +50,7 @@
             android:fontFamily="sans-serif-medium"
             android:gravity="center"
             android:maxLines="2"
-            android:textColor="@color/ngad_headline"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="18sp" />
 
         <RatingBar
@@ -73,7 +73,7 @@
             android:gravity="center"
             android:lineSpacingExtra="2dp"
             android:maxLines="2"
-            android:textColor="@color/ngad_body"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="13sp" />
 
         <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView

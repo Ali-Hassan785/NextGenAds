@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Neutral, app-overridable palette for the native templates. Override any of these in the
-         host app's colors.xml to re-theme every template at once. -->
-    <color name="ngad_surface">#FFFFFFFF</color>
-    <color name="ngad_stroke">#FFEDEFF3</color>
-    <color name="ngad_headline">#FF0B0E14</color>
-    <color name="ngad_body">#FF5E6470</color>
+    <!--
+      Ad-template palette.
+
+      Surfaces, text, strokes and placeholder fills are NOT defined here: the templates resolve them
+      from the host theme's Material3 tokens (?attr/colorSurface, ?attr/colorOnSurface,
+      ?attr/colorOnSurfaceVariant, ?attr/colorSurfaceVariant, ?attr/colorOutlineVariant). That makes
+      every template — native cards, shimmer placeholders and the loading / welcome covers — follow
+      the app's own light/dark identity, including apps that commit to a dark theme without the
+      system `-night` qualifier (where a static `-night` color would never activate). Re-theme them by
+      styling those Material tokens in your app theme; requires a Material3 (or MaterialComponents)
+      theme on the host.
+
+      Only the brand-fixed accents below are static — they read correctly on both light and dark
+      surfaces, so they don't vary by theme. Override any of them in your app's colors.xml.
+    -->
     <color name="ngad_cta">#FF2563EB</color>
     <color name="ngad_cta_text">#FFFFFFFF</color>
     <color name="ngad_cta_ripple">#52FFFFFF</color>
     <color name="ngad_ad_badge">#FFFFC861</color>
     <color name="ngad_ad_badge_text">#FF5A4500</color>
-    <color name="ngad_shimmer_block">#FFE9ECF1</color>
-    <color name="ngad_media_bg">#FFEFF2F7</color>
-    <!-- Collapse / close controls on the collapsible template. -->
-    <color name="ngad_control">#FF6B7280</color>
-    <color name="ngad_control_bg">#14000000</color>
 </resources>

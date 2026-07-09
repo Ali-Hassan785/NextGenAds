@@ -42,7 +42,7 @@
                     android:fontFamily="sans-serif-medium"
                     android:letterSpacing="0.005"
                     android:maxLines="1"
-                    android:textColor="@color/ngad_headline"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="16sp" />
 
                 <LinearLayout
@@ -69,7 +69,7 @@
                         android:ellipsize="end"
                         android:fontFamily="sans-serif"
                         android:maxLines="1"
-                        android:textColor="@color/ngad_body"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
@@ -100,7 +100,7 @@
             android:fontFamily="sans-serif"
             android:lineSpacingExtra="2dp"
             android:maxLines="2"
-            android:textColor="@color/ngad_body"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="13sp" />
 
         <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
