@@ -1,4 +1,0 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Committed dark identity: night mirrors the shared deck theme exactly. -->
-    <style name="Base.Theme.NextGen" parent="Theme.NextGen.Deck" />
-</resources>

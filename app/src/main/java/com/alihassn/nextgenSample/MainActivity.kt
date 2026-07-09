@@ -1,7 +1,6 @@
 package com.alihassn.nextgenSample
 
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -16,6 +15,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.core.view.ViewCompat
@@ -93,6 +94,8 @@ class MainActivity : AppCompatActivity() {
             SampleApp.showRate.logReport()
             true
         }
+
+        setupThemeToggle()
 
         // Bottom-pinned live stats table. Refreshes on every ad event; tap to reset the counters.
         statsTable = findViewById(R.id.statsTable)
@@ -499,6 +502,32 @@ class MainActivity : AppCompatActivity() {
         status.text = "Status: $text"
     }
 
+    /**
+     * Wires the header day/night toggle to [ThemePrefs]. The current mode is reflected first (before
+     * the listener is attached, so restoring state doesn't re-trigger it); a tap then persists the
+     * new mode and applies it, recreating the activity in the chosen theme — which re-themes the app
+     * chrome and every ad template together.
+     */
+    private fun setupThemeToggle() {
+        val group = findViewById<MaterialButtonToggleGroup>(R.id.themeToggle)
+        group.check(
+            when (ThemePrefs.getMode(this)) {
+                AppCompatDelegate.MODE_NIGHT_NO -> R.id.btnThemeLight
+                AppCompatDelegate.MODE_NIGHT_YES -> R.id.btnThemeDark
+                else -> R.id.btnThemeAuto
+            }
+        )
+        group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val mode = when (checkedId) {
+                R.id.btnThemeLight -> AppCompatDelegate.MODE_NIGHT_NO
+                R.id.btnThemeDark -> AppCompatDelegate.MODE_NIGHT_YES
+                else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+            if (mode != ThemePrefs.getMode(this)) ThemePrefs.setMode(this, mode)
+        }
+    }
+
     /** Rebuilds the bottom stats table from the app-wide show-rate tracker (main-thread safe). */
     private fun refreshStats() {
         statsTable.post {
@@ -525,11 +554,11 @@ class MainActivity : AppCompatActivity() {
                     // Bold the show-rate cell when it's flagged, so the color reads clearly.
                     setTypeface(typeface, if (header || warnColor != null) Typeface.BOLD else Typeface.NORMAL)
                     textSize = 12f
-                    // Muted header, light body — legible and quiet on the dark strip; a flagged show
-                    // rate overrides with orange (< 95%) or red (< 80%).
+                    // Muted header, primary body — both are DayNight color roles so they stay legible
+                    // in light and dark; a flagged show rate overrides with amber (< 95%) or red (< 80%).
                     setTextColor(
                         warnColor
-                            ?: if (header) Color.parseColor("#969BA6") else Color.parseColor("#E3E5EA"),
+                            ?: getColor(if (header) R.color.ng_muted else R.color.ng_text),
                     )
                     val leftAligned = i < ShowRateTracker.LEFT_ALIGNED.size && ShowRateTracker.LEFT_ALIGNED[i]
                     gravity = if (leftAligned) Gravity.START else Gravity.END
@@ -550,8 +579,8 @@ class MainActivity : AppCompatActivity() {
     private fun showRateWarnColor(pct: String): Int? {
         val value = pct.removeSuffix("%").toIntOrNull() ?: return null
         return when {
-            value < 80 -> Color.parseColor("#E5484D") // red — poor show rate
-            value < 95 -> Color.parseColor("#F5A623") // orange — below target
+            value < 80 -> getColor(R.color.ng_danger) // red — poor show rate
+            value < 95 -> getColor(R.color.ng_warn)   // amber — below target
             else -> null                              // healthy
         }
     }

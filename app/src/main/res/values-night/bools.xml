@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night: dark status bar → light icons. -->
+    <bool name="ng_light_status_bar">false</bool>
+</resources>

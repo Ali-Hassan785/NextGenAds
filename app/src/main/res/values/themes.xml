@@ -4,9 +4,11 @@
          NextGen theme — calm neutral dark, one violet accent. Quiet by
          default; emphasis is spent only where it guides the eye.
          ============================================================ -->
-    <!-- Dark (not DayNight): the identity is committed dark, so every Material component —
-         dialogs, menus, ripples — must use the dark tonal palette even on a light-mode device. -->
-    <style name="Theme.NextGen.Deck" parent="Theme.Material3.Dark.NoActionBar">
+    <!-- DayNight: day/night swap via a persisted in-app toggle (AppCompatDelegate.setDefaultNightMode).
+         Every color below is an ng_* role that switches between values/colors.xml (light) and
+         values-night/colors.xml (dark), so all Material components — and the ad templates, which read
+         these same Material tokens — follow the selected mode. -->
+    <style name="Theme.NextGen.Deck" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/ng_violet</item>
         <item name="colorOnPrimary">@color/ng_on_primary</item>
         <item name="colorPrimaryContainer">@color/ng_violet_deep</item>
@@ -27,7 +29,8 @@
         <item name="android:windowBackground">@color/ng_ink</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/ng_ink</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <!-- Dark status-bar icons on the light canvas (day), light icons on the dark canvas (night). -->
+        <item name="android:windowLightStatusBar">@bool/ng_light_status_bar</item>
 
         <!-- Every plain Button is a quiet ghost by default; primary CTAs opt in below. -->
         <item name="materialButtonStyle">@style/Widget.NextGen.Button.Ghost</item>
@@ -122,10 +125,10 @@
     <style name="ThemeOverlay.NextGen.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="colorSurface">@color/ng_surface</item>
         <item name="colorOnSurface">@color/ng_text</item>
-        <item name="colorOnSurfaceVariant">#C9CBD6</item>
+        <item name="colorOnSurfaceVariant">@color/ng_muted</item>
         <item name="colorPrimary">@color/ng_violet_bright</item>
         <item name="android:textColorPrimary">@color/ng_text</item>
-        <item name="android:textColorSecondary">#C9CBD6</item>
+        <item name="android:textColorSecondary">@color/ng_muted</item>
         <item name="shapeAppearanceMediumComponent">@style/Shape.NextGen.Dialog</item>
         <item name="materialAlertDialogTitleTextStyle">@style/Text.NextGen.Dialog.Title</item>
         <item name="buttonBarPositiveButtonStyle">@style/Widget.NextGen.Dialog.Button</item>

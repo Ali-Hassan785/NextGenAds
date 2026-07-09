@@ -19,6 +19,10 @@ class SampleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Apply the saved day/night choice before any activity is shown, so the splash already
+        // renders in the chosen mode. The in-app toggle (MainActivity header) updates it at runtime.
+        ThemePrefs.apply(this)
+
         // Route every ad lifecycle event (load / show / click / impression / revenue / …) to
         // Firebase Analytics. No-ops until google-services.json is added.
         NextGenAds.registerEventListener(FirebaseAdEventListener(this))

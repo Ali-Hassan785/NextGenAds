@@ -4,34 +4,40 @@
     <color name="white">#FFFFFFFF</color>
 
     <!-- ============================================================
-         NextGen — calm neutral dark with a single violet accent.
-         Restraint over decoration: quiet surfaces, one accent, air.
+         NextGen — LIGHT palette (day). The dark (night) values live in
+         values-night/colors.xml; the theme is DayNight, so every ng_*
+         role below swaps automatically with the selected day/night mode.
+         Calm neutral surfaces, one violet accent, air.
          ============================================================ -->
 
     <!-- Canvas & surfaces -->
-    <color name="ng_ink">#0F1116</color>          <!-- window / app canvas -->
-    <color name="ng_ink_2">#0F1116</color>        <!-- header (flat, same as canvas) -->
-    <color name="ng_surface">#191C22</color>      <!-- cards -->
-    <color name="ng_surface_alt">#212530</color>  <!-- secondary buttons, insets -->
-    <color name="ng_line">#2A2E37</color>         <!-- dividers / borders -->
-    <color name="ng_line_soft">#20242C</color>
+    <color name="ng_ink">#F4F5F7</color>          <!-- window / app canvas -->
+    <color name="ng_ink_2">#F4F5F7</color>        <!-- header (flat, same as canvas) -->
+    <color name="ng_surface">#FFFFFFFF</color>    <!-- cards -->
+    <color name="ng_surface_alt">#EAECF1</color>  <!-- secondary buttons, insets -->
+    <color name="ng_line">#E0E3E9</color>         <!-- dividers / borders -->
+    <color name="ng_line_soft">#EAECF0</color>
 
-    <!-- Single accent — violet -->
-    <color name="ng_violet">#7C6BFF</color>
-    <color name="ng_violet_bright">#9C8DFF</color>
-    <color name="ng_violet_deep">#5B4BE0</color>
-    <color name="ng_violet_tint">#B8ACFF</color>
+    <!-- Single accent — violet (a touch deeper than night, for contrast on light) -->
+    <color name="ng_violet">#6C5CE7</color>
+    <color name="ng_violet_bright">#5646C9</color>
+    <color name="ng_violet_deep">#E6E2FD</color>
+    <color name="ng_violet_tint">#6C5CE7</color>
 
     <!-- Kept for compatibility; used only for the subtle "ready" status dot. -->
-    <color name="ng_gold">#7C6BFF</color>
-    <color name="ng_gold_soft">#B8ACFF</color>
+    <color name="ng_gold">#6C5CE7</color>
+    <color name="ng_gold_soft">#8B7BFF</color>
 
     <!-- Text -->
-    <color name="ng_text">#F1F2F5</color>
-    <color name="ng_muted">#969BA6</color>
-    <color name="ng_faint">#61667180</color>
+    <color name="ng_text">#16181D</color>
+    <color name="ng_muted">#5A5F6A</color>
+    <color name="ng_faint">#806A6F79</color>
 
     <!-- State -->
-    <color name="ng_success">#4ED08F</color>
-    <color name="ng_on_primary">#FFFFFF</color>
+    <color name="ng_success">#1E9E63</color>
+    <color name="ng_on_primary">#FFFFFFFF</color>
+
+    <!-- Stats show-rate flags — deeper on light for contrast (see values-night for the dark pair). -->
+    <color name="ng_warn">#B26A00</color>
+    <color name="ng_danger">#C4292F</color>
 </resources>

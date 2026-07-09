@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ============================================================
+         NextGen — DARK palette (night). The committed-dark identity,
+         now the "dark" side of the DayNight theme. Mirrors the role
+         names in values/colors.xml so every ng_* swaps by mode.
+         ============================================================ -->
+
+    <!-- Canvas & surfaces -->
+    <color name="ng_ink">#0F1116</color>          <!-- window / app canvas -->
+    <color name="ng_ink_2">#0F1116</color>        <!-- header (flat, same as canvas) -->
+    <color name="ng_surface">#191C22</color>      <!-- cards -->
+    <color name="ng_surface_alt">#212530</color>  <!-- secondary buttons, insets -->
+    <color name="ng_line">#2A2E37</color>         <!-- dividers / borders -->
+    <color name="ng_line_soft">#20242C</color>
+
+    <!-- Single accent — violet -->
+    <color name="ng_violet">#7C6BFF</color>
+    <color name="ng_violet_bright">#9C8DFF</color>
+    <color name="ng_violet_deep">#5B4BE0</color>
+    <color name="ng_violet_tint">#B8ACFF</color>
+
+    <!-- Kept for compatibility; used only for the subtle "ready" status dot. -->
+    <color name="ng_gold">#7C6BFF</color>
+    <color name="ng_gold_soft">#B8ACFF</color>
+
+    <!-- Text -->
+    <color name="ng_text">#F1F2F5</color>
+    <color name="ng_muted">#969BA6</color>
+    <color name="ng_faint">#61667180</color>
+
+    <!-- State -->
+    <color name="ng_success">#4ED08F</color>
+    <color name="ng_on_primary">#FFFFFF</color>
+
+    <!-- Stats show-rate flags — brighter on the dark strip. -->
+    <color name="ng_warn">#F5A623</color>
+    <color name="ng_danger">#E5484D</color>
+</resources>
