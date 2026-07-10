@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 
 /**
  * Drives an **app-open ad on a splash screen** — the app-open counterpart of
@@ -70,7 +71,7 @@ object SplashAppOpenAd {
             handler.postDelayed({ finishOnce() }, wait)
         }
 
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canShowAds(AdFormat.APP_OPEN)) {
             // Premium / kill-switch: no ad, but still respect the minimum splash time.
             proceedAfterMinDelay()
             return@runOnMain

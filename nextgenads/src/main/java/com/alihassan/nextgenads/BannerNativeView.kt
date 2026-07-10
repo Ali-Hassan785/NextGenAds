@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.FrameLayout
 import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.banner.BannerSize
+import com.alihassan.nextgenads.events.AdFormat
 import com.alihassan.nextgenads.nativead.NativeAdHelper
 import com.alihassan.nextgenads.nativead.NativeTemplate
 import com.alihassan.nextgenads.nativead.NativeTemplateView
@@ -17,6 +18,9 @@ import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 enum class AdType {
     BANNER,
     NATIVE;
+
+    /** The [AdFormat] this view type reports to the library's per-format toggles / events. */
+    internal fun toAdFormat(): AdFormat = if (this == BANNER) AdFormat.BANNER else AdFormat.NATIVE
 
     companion object {
         /** Maps the `ngad_ad_type` xml enum value to an [AdType] (defaults to [NATIVE]). */
@@ -101,7 +105,7 @@ class BannerNativeView @JvmOverloads constructor(
         this.nativeTemplate = nativeTemplate
         this.bannerSize = bannerSize
 
-        if (!NextGenAds.canShowAds() || !remoteEnabled || adUnitId.isBlank()) {
+        if (!NextGenAds.canShowAds(adType.toAdFormat()) || !remoteEnabled || adUnitId.isBlank()) {
             hide()
             return
         }
@@ -188,6 +192,10 @@ class BannerNativeView @JvmOverloads constructor(
 
     /** Ads disabled at runtime (e.g. the user goes premium) — release and hide any shown ad. */
     override fun onAdsDisabled() = hide()
+
+    /** Reported so a single-format toggle ([NextGenAds.setFormatEnabled]) hides only matching slots. */
+    override val slotAdFormat: AdFormat
+        get() = adType.toAdFormat()
 
     /** Destroys any banner [AdView] children so a replaced/discarded banner isn't leaked. */
     private fun destroyBannerChildren() {

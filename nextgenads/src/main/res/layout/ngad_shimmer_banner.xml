@@ -1,17 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Shimmer placeholder for a large anchored adaptive banner (BannerAdHelper). A single full-width
-     block: an adaptive AdView fills its whole rectangle, so one block reads truer than an
-     icon/text/CTA skeleton. BannerAdHelper sets this view's height to the *resolved* banner height
-     (AdSize.getHeightInPixels) before showing it, so the container doesn't jump when the real ad
-     replaces the shimmer. The minHeight is only a fallback for when that sizing is skipped. -->
+<!-- Shimmer placeholder for a banner (BannerAdHelper). A proper banner skeleton — icon on the left,
+     two text lines in the middle, and a CTA block on the right — instead of a single grey slab, so
+     the loading state reads like a real banner ad. BannerAdHelper sets this view's height to the
+     *resolved* banner height (AdSize.getHeightInPixels) before showing it, so the container doesn't
+     jump when the real ad replaces the shimmer; the row is centred vertically to sit well at any
+     banner height (50dp anchored → taller adaptive / MREC). -->
 <com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:minHeight="50dp">
 
-    <View
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:minHeight="50dp"
-        android:background="@drawable/ngad_bg_placeholder" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="12dp"
+        android:paddingTop="6dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="6dp">
+
+        <!-- Icon. -->
+        <View
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/ngad_bg_placeholder" />
+
+        <!-- Headline + body lines. -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="11dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <View
+                android:layout_width="120dp"
+                android:layout_height="9dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+        </LinearLayout>
+
+        <!-- CTA. -->
+        <View
+            android:layout_width="62dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/ngad_bg_placeholder" />
+    </LinearLayout>
 
 </com.facebook.shimmer.ShimmerFrameLayout>

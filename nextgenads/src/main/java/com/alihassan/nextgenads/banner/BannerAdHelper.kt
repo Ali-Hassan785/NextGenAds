@@ -155,8 +155,9 @@ object BannerAdHelper {
         count: Int = 1,
         widthDp: Int = screenWidthDp(activity),
         size: BannerSize = BannerSize.ADAPTIVE,
+        remoteEnabled: Boolean = true,
     ) {
-        if (!NextGenAds.canRequest()) return
+        if (!remoteEnabled || !NextGenAds.canRequest(AdFormat.BANNER)) return
         // Preloaded AdViews are created with this Activity as their context and sit detached in a
         // process-wide pool — purge them when their Activity dies, or they'd leak it (and attach
         // dead-context views later).
@@ -215,8 +216,9 @@ object BannerAdHelper {
         size: BannerSize = BannerSize.ADAPTIVE,
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
+        remoteEnabled: Boolean = true,
     ) {
-        if (!NextGenAds.canShowAds()) {
+        if (!remoteEnabled || !NextGenAds.canShowAds(AdFormat.BANNER)) {
             container.visibility = View.GONE
             return
         }
@@ -248,8 +250,30 @@ object BannerAdHelper {
             return
         }
 
+        // Resolve the banner size/height up front so the shimmer can both reserve the exact slot AND
+        // pick a skeleton that fits that height: a compact icon/text/CTA row for short banners, and a
+        // media-style skeleton (media block + text + CTA) for tall ones like a 300x250 MREC — so the
+        // placeholder never looks like a small strip floating in a big empty box.
+        val adSize = size.resolve(activity, widthDp)
+        // Inline adaptive reports its MAXIMUM height (often near the screen height), so sizing the
+        // shimmer to it reserves a huge block. Reserve the anchored-adaptive height instead — the real
+        // inline ad is usually about that tall — and let the container settle when it loads.
+        val shimmerHeightPx = if (size == BannerSize.ADAPTIVE_INLINE) {
+            BannerSize.ADAPTIVE.resolve(activity, widthDp).getHeightInPixels(activity)
+        } else {
+            adSize.getHeightInPixels(activity)
+        }
+        // Anything ≥ ~150dp tall (i.e. the MREC) reads better as a media/native-style skeleton;
+        // shorter anchored/adaptive/fixed banners use the compact horizontal row skeleton.
+        val tallThresholdPx = (150 * activity.resources.displayMetrics.density).toInt()
+        val shimmerLayout = if (shimmerHeightPx >= tallThresholdPx) {
+            R.layout.ngad_shimmer_banner_media
+        } else {
+            R.layout.ngad_shimmer_banner
+        }
+
         val shimmer = LayoutInflater.from(activity)
-            .inflate(R.layout.ngad_shimmer_banner, container, false) as ShimmerFrameLayout
+            .inflate(shimmerLayout, container, false) as ShimmerFrameLayout
         destroyBannerChildren(container) // release any banner this placement was showing before
         container.removeAllViews()
 
@@ -261,20 +285,12 @@ object BannerAdHelper {
         shownContainers.add(container)
         shimmer.startShimmer()
 
-        val adSize = size.resolve(activity, widthDp)
         // Size the shimmer to the banner's resolved height so the placeholder occupies exactly the
         // slot the ad will fill — otherwise the container jumps when the (taller) ad swaps in. For a
         // fixed size, also match its width so the (centered) placeholder has the ad's exact footprint
         // instead of a full-width block that collapses to a narrow ad; adaptive banners stay full-width.
         shimmer.layoutParams = shimmer.layoutParams.apply {
-            // Inline adaptive reports its MAXIMUM height (often near the screen height), so sizing the
-            // shimmer to it reserves a huge block. Reserve the anchored-adaptive height instead — the
-            // real inline ad is usually about that tall — and let the container settle when it loads.
-            height = if (size == BannerSize.ADAPTIVE_INLINE) {
-                BannerSize.ADAPTIVE.resolve(activity, widthDp).getHeightInPixels(activity)
-            } else {
-                adSize.getHeightInPixels(activity)
-            }
+            height = shimmerHeightPx
             if (!size.isAdaptive) width = adSize.getWidthInPixels(activity)
         }
         // Shimmer is already showing; queue the request so it fires as soon as the SDK is ready.

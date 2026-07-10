@@ -47,7 +47,7 @@ class SampleApp : Application() {
         // cover; the splash app-open (SplashAppOpenAd) uses the plain "Loading ad…" cover instead, so
         // "Welcome back" only ever appears on a normal return, never on the splash.
         AppOpenAdManager.install(this, APP_OPEN_UNIT)
-            .skipOn(SplashActivity::class.java)
+            .skipOn(SplashActivity::class.java, ComposeSplashActivity::class.java)
 
         // The full-screen "Welcome back" cover's copy is customisable from the host app — localise or
         // rebrand it here. This targets the same helper the manager auto-shows. Any field left unset

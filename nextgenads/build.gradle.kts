@@ -70,6 +70,12 @@ dependencies {
     api(libs.user.messaging.platform)
     // Shimmer placeholders shown while ads load.
     implementation(libs.shimmer)
+    // Google Play In-App Updates — powers InAppUpdateManager. `api` so AppUpdateInfo (exposed by the
+    // onUpdateAvailable callback) is on the public ABI.
+    api(libs.app.update)
+    // Google Play In-App Review — powers InAppReviewManager. `implementation`: no Play review type
+    // leaks into this library's public API, so it can stay an internal detail.
+    implementation(libs.review)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

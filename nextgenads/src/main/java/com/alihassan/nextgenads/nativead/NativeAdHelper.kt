@@ -70,7 +70,14 @@ object NativeAdHelper {
         adUnitId: String,
         onLoaded: (NativeAd) -> Unit,
         onFailed: ((LoadAdError?) -> Unit)? = null,
-    ) = loadWithRetry(adUnitId, attempt = 0, onLoaded = onLoaded, onFailed = onFailed)
+        remoteEnabled: Boolean = true,
+    ) {
+        if (!remoteEnabled) {
+            onFailed?.invoke(null)
+            return
+        }
+        loadWithRetry(adUnitId, attempt = 0, onLoaded = onLoaded, onFailed = onFailed)
+    }
 
     private fun loadWithRetry(
         adUnitId: String,
@@ -78,7 +85,7 @@ object NativeAdHelper {
         onLoaded: (NativeAd) -> Unit,
         onFailed: ((LoadAdError?) -> Unit)?,
     ) {
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canShowAds(AdFormat.NATIVE)) {
             // Must settle the callback: silently dropping it would leak the caller's in-flight
             // accounting (waiters would shimmer forever and block future loads for this unit).
             onFailed?.invoke(null)
@@ -91,7 +98,7 @@ object NativeAdHelper {
 
         // Queue until the SDK is ready so cache warm-ups issued during app start aren't dropped.
         NextGenAds.whenInitialized {
-            if (!NextGenAds.canShowAds()) { // may have flipped while queued for initialization
+            if (!NextGenAds.canShowAds(AdFormat.NATIVE)) { // may have flipped while queued for initialization
                 onFailed?.invoke(null)
                 return@whenInitialized
             }
@@ -142,8 +149,8 @@ object NativeAdHelper {
     /** Preloads up to [count] ads (capped by [maxCachePerUnit]) into the cache. */
     @JvmStatic
     @JvmOverloads
-    fun preload(adUnitId: String, count: Int = maxCachePerUnit) {
-        if (!NextGenAds.canRequest()) return
+    fun preload(adUnitId: String, count: Int = maxCachePerUnit, remoteEnabled: Boolean = true) {
+        if (!remoteEnabled || !NextGenAds.canRequest(AdFormat.NATIVE)) return
         val target = count.coerceIn(0, maxCachePerUnit)
         while (cachedCount(adUnitId) + inFlightCount(adUnitId) < target) {
             startLoad(adUnitId)
@@ -169,8 +176,9 @@ object NativeAdHelper {
         refill: Boolean = false,
         onLoaded: (() -> Unit)? = null,
         onFailed: ((LoadAdError) -> Unit)? = null,
+        remoteEnabled: Boolean = true,
     ) {
-        if (!NextGenAds.canShowAds()) {
+        if (!remoteEnabled || !NextGenAds.canShowAds(AdFormat.NATIVE)) {
             // Premium / kill-switch: even a cached ad must not be shown.
             templateView.showError()
             return
@@ -186,7 +194,7 @@ object NativeAdHelper {
             return
         }
 
-        if (!NextGenAds.canRequest()) {
+        if (!NextGenAds.canRequest(AdFormat.NATIVE)) {
             // Ads disabled, or the breaker paused new requests on a slow connection.
             templateView.showError()
             return
@@ -242,7 +250,7 @@ object NativeAdHelper {
 
     /** Starts loads until every parked waiter has an in-flight load backing it (never over-requests). */
     private fun ensureLoadsForWaiters(adUnitId: String) {
-        if (!NextGenAds.canRequest()) return
+        if (!NextGenAds.canRequest(AdFormat.NATIVE)) return
         while (inFlightCount(adUnitId) < waiterCount(adUnitId)) {
             startLoad(adUnitId)
         }

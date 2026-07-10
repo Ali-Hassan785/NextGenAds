@@ -129,8 +129,11 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
      * mutated (and [onResult] delivered) on the main thread.
      */
     @JvmOverloads
-    fun load(onResult: ((Boolean) -> Unit)? = null) = NextGenAds.runOnMain {
-        if (!NextGenAds.canRequest()) {
+    fun load(
+        remoteEnabled: Boolean = true,
+        onResult: ((Boolean) -> Unit)? = null,
+    ) = NextGenAds.runOnMain {
+        if (!remoteEnabled || !NextGenAds.canRequest(AdFormat.REWARDED_INTERSTITIAL)) {
             onResult?.invoke(false)
             return@runOnMain
         }
@@ -182,7 +185,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
                             handler.postDelayed({
-                                if (NextGenAds.canRequest()) {
+                                if (NextGenAds.canRequest(AdFormat.REWARDED_INTERSTITIAL)) {
                                     requestAd()
                                 } else { // breaker tripped / ads disabled during the backoff wait
                                     loading = false
@@ -215,7 +218,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
         timeoutMs: Long = 0L,
         onDismiss: () -> Unit = {},
     ) {
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canShowAds(AdFormat.REWARDED_INTERSTITIAL)) {
             onDismiss()
             return
         }
@@ -280,7 +283,7 @@ class RewardedInterstitialAdHelper(private val adUnitId: String) {
         onDismiss: () -> Unit = {},
         preloadedOverlay: View? = null,
     ): Boolean {
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canShowAds(AdFormat.REWARDED_INTERSTITIAL)) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
             return false
@@ -484,7 +487,9 @@ object RewardedInterstitials {
 
     /** Convenience: preload an ad unit. */
     @JvmStatic
-    fun preload(adUnitId: String) = get(adUnitId).load()
+    @JvmOverloads
+    fun preload(adUnitId: String, remoteEnabled: Boolean = true) =
+        get(adUnitId).load(remoteEnabled = remoteEnabled)
 
     /** Convenience: request (if needed) and show [adUnitId] on demand, bounded by [timeoutMs]. */
     @JvmStatic

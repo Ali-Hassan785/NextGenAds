@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
     android:elevation="1dp"
-    android:padding="16dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -49,14 +49,14 @@
             android:id="@+id/ngad_media"
             android:layout_width="match_parent"
             android:layout_height="120dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/ngad_bg_media"
+            android:layout_marginTop="8dp"
+
             android:clipToOutline="true" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -66,7 +66,7 @@
                 android:layout_height="52dp"
                 android:layout_marginEnd="12dp"
                 android:adjustViewBounds="true"
-                android:background="@drawable/ngad_bg_media"
+
                 android:clipToOutline="true"
                 android:contentDescription="@null"
                 android:scaleType="centerCrop" />
@@ -104,7 +104,7 @@
             android:id="@+id/ngad_body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:ellipsize="end"
             android:fontFamily="sans-serif"
             android:lineSpacingExtra="2dp"
@@ -115,8 +115,8 @@
         <TextView
             android:id="@+id/ngad_cta"
             android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginTop="14dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/ngad_bg_cta"
             android:fontFamily="sans-serif-medium"
             android:gravity="center"

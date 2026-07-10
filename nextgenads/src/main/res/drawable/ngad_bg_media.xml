@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Rounded media surface; used as the MediaView background + outline so the ad media is clipped
-     to rounded corners (with android:clipToOutline="true"). -->
+<!-- Media/icon surface (square corners). Used as the MediaView and icon background + outline; with
+     the code-set clipToOutline the media is clipped to these square corners, so neither the media
+     nor the icon is rounded in any native template. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="?attr/colorSurfaceVariant" />
-    <corners android:radius="14dp" />
 </shape>

@@ -108,7 +108,9 @@ class CustomNativeActivity : AppCompatActivity() {
             customNativeXml,
             customNativeCode,
             customNativeBinder,
-        ).forEach { NativeAdHelper.populate(it, NATIVE_UNIT, refill = true) }
+        ).forEach {
+            NativeAdHelper.populate(it, NATIVE_UNIT, refill = true, remoteEnabled = AdsConfig.native)
+        }
     }
 
     override fun onDestroy() {

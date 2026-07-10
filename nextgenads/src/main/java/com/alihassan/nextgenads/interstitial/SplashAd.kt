@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 
 /**
  * Drives a **splash-screen interstitial**: while your splash is on screen, it loads an interstitial
@@ -66,7 +67,7 @@ object SplashAd {
             handler.postDelayed({ finishOnce() }, wait)
         }
 
-        if (!NextGenAds.canShowAds()) {
+        if (!NextGenAds.canShowAds(AdFormat.INTERSTITIAL)) {
             // Premium / kill-switch: no ad, but still respect the minimum splash time.
             proceedAfterMinDelay()
             return@runOnMain

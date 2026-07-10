@@ -49,6 +49,24 @@ object NextGenAds {
             applyAdsEnabledState()
         }
 
+    /**
+     * Remote-config master switch for whether **any** ad may load or show. Defaults to `true`.
+     *
+     * Intended to be driven from your remote config (Firebase Remote Config, etc.): set it once the
+     * flag is fetched, e.g. `NextGenAds.adsLoadEnabled = remoteConfig.getBoolean("ads_enabled")`.
+     * It folds into [canShowAds]/[canRequest] exactly like [enabled], so flipping it to `false`
+     * immediately stops every new ad request and purges/hides all cached & on-screen ads; flipping
+     * it back to `true` lets ads load again. Kept separate from [enabled] (the local kill-switch)
+     * and [premium] (per-user IAP) so a server-side toggle never fights those.
+     */
+    @Volatile
+    @JvmStatic
+    var adsLoadEnabled: Boolean = true
+        set(value) {
+            field = value
+            applyAdsEnabledState()
+        }
+
     /** Toggle verbose logcat output. */
     @Volatile
     @JvmStatic
@@ -77,9 +95,81 @@ object NextGenAds {
     @JvmStatic
     var premiumProvider: () -> Boolean = { false }
 
-    /** Single gate every helper consults: ads are allowed only when enabled and not premium. */
+    /**
+     * Single gate every helper consults: ads are allowed only when locally [enabled], not switched
+     * off by remote config ([adsLoadEnabled]), and not premium.
+     */
     @JvmStatic
-    fun canShowAds(): Boolean = enabled && !premium && !premiumProvider()
+    fun canShowAds(): Boolean = enabled && adsLoadEnabled && !premium && !premiumProvider()
+
+    /** As [canShowAds], and additionally requires that [format]'s own toggle is on. */
+    @JvmStatic
+    fun canShowAds(format: AdFormat): Boolean = canShowAds() && isFormatEnabled(format)
+
+    // ---------------------------------------------------------------------------------------------
+    // Per-format remote toggles
+    //
+    // Beyond the app-wide [adsLoadEnabled], each ad format has its own on/off switch — wire each to
+    // its own remote-config key (e.g. `NextGenAds.interstitialAdsEnabled = rc.getBoolean(...)`). A
+    // format that is off requests nothing and shows nothing; turning it off also purges that
+    // format's cached inventory and hides any of its inline ads already on screen. Every format
+    // defaults to on, so a fresh install shows all ads until remote config says otherwise.
+    // ---------------------------------------------------------------------------------------------
+
+    private val formatEnabled = java.util.concurrent.ConcurrentHashMap<AdFormat, Boolean>()
+
+    /** Whether [format] may currently load/show (its own remote toggle). Defaults to `true`. */
+    @JvmStatic
+    fun isFormatEnabled(format: AdFormat): Boolean = formatEnabled[format] ?: true
+
+    /**
+     * Enables/disables a single ad [format]. Turning it `false` immediately purges that format's
+     * cached ads and hides any of its inline ads on screen (via [clearFormat]); nothing of that
+     * format is requested or shown while off. Turning it back `true` lets it load again on the next
+     * trigger / warm-up.
+     */
+    @JvmStatic
+    fun setFormatEnabled(format: AdFormat, enabled: Boolean) {
+        val was = isFormatEnabled(format)
+        formatEnabled[format] = enabled
+        if (was && !enabled) clearFormat(format)
+    }
+
+    /** Banner ads on/off (remote-config toggle). */
+    @JvmStatic
+    var bannerAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.BANNER)
+        set(value) = setFormatEnabled(AdFormat.BANNER, value)
+
+    /** Native ads on/off (remote-config toggle). */
+    @JvmStatic
+    var nativeAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.NATIVE)
+        set(value) = setFormatEnabled(AdFormat.NATIVE, value)
+
+    /** Interstitial ads on/off (remote-config toggle). */
+    @JvmStatic
+    var interstitialAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.INTERSTITIAL)
+        set(value) = setFormatEnabled(AdFormat.INTERSTITIAL, value)
+
+    /** Rewarded ads on/off (remote-config toggle). */
+    @JvmStatic
+    var rewardedAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.REWARDED)
+        set(value) = setFormatEnabled(AdFormat.REWARDED, value)
+
+    /** Rewarded-interstitial ads on/off (remote-config toggle). */
+    @JvmStatic
+    var rewardedInterstitialAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.REWARDED_INTERSTITIAL)
+        set(value) = setFormatEnabled(AdFormat.REWARDED_INTERSTITIAL, value)
+
+    /** App-open ads on/off (remote-config toggle). */
+    @JvmStatic
+    var appOpenAdsEnabled: Boolean
+        get() = isFormatEnabled(AdFormat.APP_OPEN)
+        set(value) = setFormatEnabled(AdFormat.APP_OPEN, value)
 
     // ---------------------------------------------------------------------------------------------
     // Runtime premium purge
@@ -97,6 +187,13 @@ object NextGenAds {
     internal interface PremiumAware {
         /** Invoked on the main thread when ads become disabled; hide/destroy any shown ad. */
         fun onAdsDisabled()
+
+        /**
+         * The format currently shown in this slot, so disabling a single format ([clearFormat])
+         * hides only the matching slots. `null` (default) means "unknown" — such a slot is hidden
+         * only by a full [clearAllAds], never by a per-format toggle.
+         */
+        val slotAdFormat: AdFormat? get() = null
     }
 
     private val adSlots: MutableSet<PremiumAware> =
@@ -138,6 +235,27 @@ object NextGenAds {
         val slots = synchronized(adSlots) { adSlots.toList() }
         slots.forEach { runCatching { it.onAdsDisabled() } }
         log("clearAllAds: purged all caches and hid ${slots.size} live ad slot(s)")
+    }
+
+    /**
+     * Drops a single [format]'s cached inventory and hides any of its inline ads currently on
+     * screen. Runs on the main thread. Called automatically when a format is turned off via
+     * [setFormatEnabled]; safe to call directly too.
+     */
+    @JvmStatic
+    fun clearFormat(format: AdFormat) = runOnMain {
+        when (format) {
+            AdFormat.INTERSTITIAL -> runCatching { Interstitials.clearAll() }
+            AdFormat.REWARDED -> runCatching { RewardedAds.clearAll() }
+            AdFormat.REWARDED_INTERSTITIAL -> runCatching { RewardedInterstitials.clearAll() }
+            AdFormat.APP_OPEN -> runCatching { AppOpenAds.clearAll() }
+            AdFormat.BANNER -> runCatching { BannerAdHelper.clearAll() }
+            AdFormat.NATIVE -> runCatching { NativeAdHelper.clear() }
+        }
+        // Hide only the inline slots showing this format (others keep their ad).
+        val slots = synchronized(adSlots) { adSlots.toList() }.filter { it.slotAdFormat == format }
+        slots.forEach { runCatching { it.onAdsDisabled() } }
+        log("clearFormat($format): purged cache and hid ${slots.size} live ad slot(s)")
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -206,6 +324,10 @@ object NextGenAds {
     @JvmStatic
     fun canRequest(): Boolean =
         canShowAds() && consentProvider?.invoke() != false && !isRequestPaused()
+
+    /** As [canRequest], and additionally requires that [format]'s own toggle is on. */
+    @JvmStatic
+    fun canRequest(format: AdFormat): Boolean = canRequest() && isFormatEnabled(format)
 
     /** Manually clears the cooldown and failure count (e.g. when connectivity is restored). */
     @JvmStatic

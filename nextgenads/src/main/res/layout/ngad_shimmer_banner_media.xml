@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shimmer placeholder for a TALL banner (e.g. a 300x250 MREC), chosen by BannerAdHelper when the
+     resolved banner height is large. A media/native-style skeleton — a big media block that fills
+     the space, then headline / body lines and a full-width CTA — so a tall slot doesn't show a small
+     centred strip. BannerAdHelper sets this view's height to the resolved banner height. -->
+<com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="120dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <!-- Media block: fills the remaining height. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/ngad_bg_placeholder" />
+
+        <!-- Headline. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/ngad_bg_placeholder" />
+
+        <!-- Body. -->
+        <View
+            android:layout_width="160dp"
+            android:layout_height="10dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/ngad_bg_placeholder" />
+
+        <!-- CTA. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/ngad_bg_placeholder" />
+    </LinearLayout>
+
+</com.facebook.shimmer.ShimmerFrameLayout>

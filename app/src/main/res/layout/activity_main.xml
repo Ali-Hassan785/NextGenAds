@@ -125,6 +125,16 @@
                 android:layout_marginTop="0dp"
                 android:text="Premium: OFF — tap to go ad-free" />
 
+            <!-- Opens the Jetpack Compose screen that demonstrates every ad format via
+                 :nextgenadscompose (the Compose companion to this View/XML sample). -->
+            <Button
+                android:id="@+id/btnComposeAds"
+                style="@style/Widget.NextGen.Button.Primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Open Compose ads screen →" />
+
             <!-- ===== Banner ===== -->
             <LinearLayout
                 style="@style/Widget.NextGen.Card"
@@ -137,6 +147,14 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Banner" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swBannerEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
 
                 <TextView
                     style="@style/Text.NextGen.Label"
@@ -260,6 +278,14 @@
                     android:layout_height="wrap_content"
                     android:text="Native / Banner" />
 
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swNativeEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
+
                 <TextView
                     style="@style/Text.NextGen.Label"
                     android:layout_width="wrap_content"
@@ -379,6 +405,20 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Action top" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbHalfMedia"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Half media" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbStacked"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Stacked" />
                 </com.google.android.material.chip.ChipGroup>
 
                 <Button
@@ -432,6 +472,14 @@
                     android:layout_height="wrap_content"
                     android:text="Interstitial" />
 
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swInterstitialEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
+
                 <Button
                     android:id="@+id/btnPreloadInterstitial"
                     style="@style/Widget.NextGen.Button.Ghost"
@@ -474,6 +522,14 @@
                     android:layout_height="wrap_content"
                     android:text="Rewarded" />
 
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swRewardedEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
+
                 <Button
                     android:id="@+id/btnPreloadRewarded"
                     style="@style/Widget.NextGen.Button.Ghost"
@@ -502,6 +558,14 @@
                     android:layout_height="wrap_content"
                     android:text="Rewarded interstitial" />
 
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swRewardedIntEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
+
                 <Button
                     android:id="@+id/btnPreloadRewardedInt"
                     style="@style/Widget.NextGen.Button.Ghost"
@@ -529,6 +593,14 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="App open" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swAppOpenEnabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:checked="true"
+                    android:text="Enabled — off blocks load &amp; show" />
 
                 <TextView
                     style="@style/Text.NextGen.Hint"

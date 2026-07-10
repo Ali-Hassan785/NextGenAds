@@ -43,6 +43,18 @@
             android:name=".CustomNativeActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+
+        <!-- Jetpack Compose demo screen: shows every ad format via :nextgenadscompose. -->
+        <activity
+            android:name=".ComposeAdsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- Jetpack Compose splash: consent → init → cold=interstitial / warm=app-open → Compose ads. -->
+        <activity
+            android:name=".ComposeSplashActivity"
+            android:exported="false"
+            android:theme="@style/Theme.NextGen.Splash" />
     </application>
 
 </manifest>

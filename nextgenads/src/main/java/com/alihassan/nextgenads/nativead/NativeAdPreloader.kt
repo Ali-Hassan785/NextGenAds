@@ -1,6 +1,7 @@
 package com.alihassan.nextgenads.nativead
 
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 
 /**
@@ -46,8 +47,9 @@ object NativeAdPreloader {
      * repeatedly — it never issues a second request while one is already in flight or ready.
      */
     @JvmStatic
-    fun preload(adUnitId: String) {
-        if (!NextGenAds.canRequest()) return
+    @JvmOverloads
+    fun preload(adUnitId: String, remoteEnabled: Boolean = true) {
+        if (!remoteEnabled || !NextGenAds.canRequest(AdFormat.NATIVE)) return
 
         val slot = slot(adUnitId)
         synchronized(this) {

@@ -211,10 +211,12 @@ class NativeTemplateView @JvmOverloads constructor(
         val stars = adView.findViewById<RatingBar?>(R.id.ngad_stars)
         val media = adView.findViewById<MediaView?>(R.id.ngad_media)
 
-        // Clip the icon / media to their rounded backgrounds. Done in code so it works on API 24+
-        // (the android:clipToOutline XML attribute only takes effect on API 31+).
-        icon?.clipToOutline = true
+        // Clip the media to its rounded background. Done in code so it works on API 24+ (the
+        // android:clipToOutline XML attribute only takes effect on API 31+).
         media?.clipToOutline = true
+        // Keep the icon square — never clip it to rounded corners. Set explicitly (not just omitted)
+        // so it overrides any android:clipToOutline="true" a template's XML declares, on every API.
+        icon?.clipToOutline = false
         // Fill the media slot so a media whose aspect ratio differs from the view doesn't letterbox
         // and expose the view's (grey) background as side/top bars.
         media?.imageScaleType = mediaScaleType

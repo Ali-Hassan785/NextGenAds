@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
     android:elevation="1dp"
-    android:padding="16dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -25,7 +25,7 @@
                 android:layout_height="40dp"
                 android:layout_marginEnd="10dp"
                 android:adjustViewBounds="true"
-                android:background="@drawable/ngad_bg_media"
+
                 android:clipToOutline="true"
                 android:contentDescription="@null"
                 android:scaleType="centerCrop" />
@@ -70,14 +70,6 @@
             android:textColor="?attr/colorOnSurface"
             android:textSize="16sp" />
 
-        <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
-            android:id="@+id/ngad_media"
-            android:layout_width="match_parent"
-            android:layout_height="170dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/ngad_bg_media"
-            android:clipToOutline="true" />
-
         <TextView
             android:id="@+id/ngad_body"
             android:layout_width="match_parent"
@@ -90,11 +82,20 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="13sp" />
 
+        <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
+            android:id="@+id/ngad_media"
+            android:layout_width="match_parent"
+            android:layout_height="130dp"
+            android:layout_marginTop="8dp"
+
+            android:clipToOutline="true" />
+
+
         <TextView
             android:id="@+id/ngad_cta"
             android:layout_width="match_parent"
             android:layout_height="50dp"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/ngad_bg_cta"
             android:fontFamily="sans-serif-medium"
             android:gravity="center"

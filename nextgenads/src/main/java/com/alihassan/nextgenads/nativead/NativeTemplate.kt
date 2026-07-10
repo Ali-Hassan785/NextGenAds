@@ -24,6 +24,11 @@ import com.alihassan.nextgenads.R
  * - [ACTION_TOP]  – call-to-action pinned at the top, with the icon, headline, advertiser, rating,
  *   body and media stacked below it. For slots where the action should be first in reach (bottom
  *   sheets opening upward, thumb-friendly footers).
+ * - [HALF_MEDIA]  – the card is split ~50/50: media fills the left half (with the "Ad" badge), and
+ *   the right half stacks icon + headline, advertiser, rating, body and a CTA pinned to the bottom.
+ *   A compact, list-friendly card that still shows sizeable media.
+ * - [STACKED]     – a compact card: the small "Ad" badge and headline on top, then a full-width
+ *   120dp media, then a full-width CTA at the bottom. No icon or body.
  */
 enum class NativeTemplate(
     @field:LayoutRes @get:LayoutRes val layout: Int,
@@ -40,7 +45,9 @@ enum class NativeTemplate(
     HERO(R.layout.ngad_native_hero),
     FEED(R.layout.ngad_native_feed),
     SPOTLIGHT(R.layout.ngad_native_spotlight),
-    ACTION_TOP(R.layout.ngad_native_action_top);
+    ACTION_TOP(R.layout.ngad_native_action_top),
+    HALF_MEDIA(R.layout.ngad_native_half_media,R.layout.ngad_shimmer_native_half_media),
+    STACKED(R.layout.ngad_native_stacked);
 
     companion object {
         /**

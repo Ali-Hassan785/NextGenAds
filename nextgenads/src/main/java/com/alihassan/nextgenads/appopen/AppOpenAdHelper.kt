@@ -133,8 +133,11 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * in flight are parked and all notified with that load's result.
      */
     @JvmOverloads
-    fun load(onResult: ((Boolean) -> Unit)? = null) = NextGenAds.runOnMain {
-        if (!NextGenAds.canRequest()) {
+    fun load(
+        remoteEnabled: Boolean = true,
+        onResult: ((Boolean) -> Unit)? = null,
+    ) = NextGenAds.runOnMain {
+        if (!remoteEnabled || !NextGenAds.canRequest(AdFormat.APP_OPEN)) {
             onResult?.invoke(false)
             return@runOnMain
         }
@@ -185,7 +188,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                             val delayMs = 1000L shl retryCount // 1s, 2s, 4s …
                             retryCount++
                             handler.postDelayed({
-                                if (NextGenAds.canRequest()) {
+                                if (NextGenAds.canRequest(AdFormat.APP_OPEN)) {
                                     requestAd()
                                 } else { // breaker tripped / ads disabled during the backoff wait
                                     loading = false
@@ -230,7 +233,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
         canShow: () -> Boolean = { true },
         onDismiss: () -> Unit = {},
     ) {
-        if (!NextGenAds.canShowAds() || showing) {
+        if (!NextGenAds.canShowAds(AdFormat.APP_OPEN) || showing) {
             onDismiss()
             return
         }
@@ -297,7 +300,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
         showCover: Boolean = true,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
     ): Boolean {
-        if (!NextGenAds.canShowAds() || showing) {
+        if (!NextGenAds.canShowAds(AdFormat.APP_OPEN) || showing) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
             onDismiss()
             return false
@@ -539,7 +542,9 @@ object AppOpenAds {
 
     /** Convenience: preload an ad unit. */
     @JvmStatic
-    fun preload(adUnitId: String) = get(adUnitId).load()
+    @JvmOverloads
+    fun preload(adUnitId: String, remoteEnabled: Boolean = true) =
+        get(adUnitId).load(remoteEnabled = remoteEnabled)
 
     /** Drops every cached app-open ad across all units (e.g. on going premium / low memory). */
     @JvmStatic
@@ -687,7 +692,7 @@ class AppOpenAdManager private constructor(
         val wasCold = coldStart
         coldStart = false
         pendingShowEpoch = -1
-        if (!enabled || !NextGenAds.canShowAds()) return
+        if (!enabled || !NextGenAds.canShowAds(AdFormat.APP_OPEN)) return
         // The first foreground of a cold start is NOT a return-from-background — request nothing.
         if (wasCold && !showOnColdStart) return
         // Arm the show for this foreground session and try now. If the foreground activity is still
@@ -706,7 +711,7 @@ class AppOpenAdManager private constructor(
      */
     private fun tryPendingShow() {
         if (pendingShowEpoch != foregroundEpoch) return
-        if (!enabled || !NextGenAds.canShowAds()) return
+        if (!enabled || !NextGenAds.canShowAds(AdFormat.APP_OPEN)) return
         val activity = currentActivity.get()
         // Not settled yet — wait for the next onActivityResumed / onActivityStarted.
         if (activity == null || activity.isFinishing || activity.isDestroyed) return

@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Space
 import android.widget.TextView
 import androidx.annotation.LayoutRes
 import com.facebook.shimmer.ShimmerFrameLayout
@@ -71,6 +72,9 @@ object ShimmerSkeleton {
             skeletonize(child)
             return
         }
+        // A Space is pure layout, not content — leave it as the gap it was meant to hold. Replacing
+        // it with a grey block would fill that gap (e.g. a weighted spacer becomes a large grey slab).
+        if (child is Space) return
         val index = parent.indexOfChild(child)
         parent.removeViewAt(index)
         parent.addView(block(child), index)

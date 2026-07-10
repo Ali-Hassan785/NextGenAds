@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shimmer placeholder for ngad_native_half_media: media block on the left half, and headline /
+     advertiser / rating / body / CTA blocks stacked on the right half (CTA pinned to the bottom). -->
+<com.facebook.shimmer.ShimmerFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/ngad_bg_card"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <!-- Left half: media placeholder. -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="150dp"
+            android:layout_weight="1"
+            android:background="@drawable/ngad_bg_placeholder" />
+
+        <!-- Right half: content lines + CTA pinned to the bottom. -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="150dp"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Headline (2 lines). -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="14dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <View
+                android:layout_width="160dp"
+                android:layout_height="14dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <!-- Advertiser. -->
+            <View
+                android:layout_width="110dp"
+                android:layout_height="11dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <!-- Rating. -->
+            <View
+                android:layout_width="84dp"
+                android:layout_height="12dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <!-- Body. -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="11dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- CTA. -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:background="@drawable/ngad_bg_placeholder" />
+        </LinearLayout>
+    </LinearLayout>
+</com.facebook.shimmer.ShimmerFrameLayout>

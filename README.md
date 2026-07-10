@@ -4,8 +4,9 @@ A lightweight, premium Android ad-helper library that wraps Google's **Next-Gen 
 (`com.google.android.libraries.ads.mobile.sdk`) and the **User Messaging Platform (UMP)**. It gives
 you drop-in helpers for every common ad format — banner, native, interstitial, rewarded, rewarded
 interstitial, app-open — with preloading, per-unit caching, retry/backoff, GDPR consent, a global
-premium kill-switch with runtime purge, nine native templates plus bring-your-own layouts, and a
-ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
+premium kill-switch with runtime purge, twelve native templates plus bring-your-own layouts, and a
+ready-made splash flow. Everything is tuned for **show rate** and **fill rate**. A companion
+**`nextgenads-compose`** module wraps every format for **Jetpack Compose** (see [Jetpack Compose](#jetpack-compose)).
 
 > All SDK callbacks are marshalled to the **main thread**, so you can touch UI from any callback. The
 > library is Kotlin with full `@JvmStatic` / `@JvmOverloads` annotations, so it's fully usable from
@@ -29,6 +30,7 @@ ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
 - [Rewarded ads](#rewarded-ads)
 - [Rewarded interstitial ads](#rewarded-interstitial-ads)
 - [App open ads](#app-open-ads)
+- [Jetpack Compose](#jetpack-compose)
 - [Premium / ad-free users](#premium--ad-free-users)
 - [Ad events (analytics & revenue)](#ad-events-analytics--revenue)
 - [Show rate & fill rate tips](#show-rate--fill-rate-tips)
@@ -46,7 +48,7 @@ ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
 | Format | Entry point | Preload | Cache | Highlights |
 | --- | --- | :---: | :---: | --- |
 | Banner | `BannerAdHelper` | ✅ | ✅ per unit | Anchored adaptive + **collapsible** (top/bottom) + shimmer |
-| Native | `NativeAdHelper` / `BannerNativeView` | ✅ | ✅ per unit | **9 templates** + custom layouts + auto-shimmer |
+| Native | `NativeAdHelper` / `BannerNativeView` | ✅ | ✅ per unit | **12 templates** + custom layouts + auto-shimmer |
 | Interstitial | `Interstitials` / `SplashAd` | ✅ | ✅ per unit | Frequency cap, counter gating, splash flow |
 | Rewarded | `RewardedAds` | ✅ | ✅ per unit | Reward callback |
 | Rewarded interstitial | `RewardedInterstitials` | ✅ | ✅ per unit | Reward callback |
@@ -618,11 +620,14 @@ NativeAdHelper.clear(NATIVE_UNIT)   // or clear() for all units
 | `HERO` | Cinematic full-width media up top with the "Ad" badge overlaid, then icon + headline, body and a bold CTA. |
 | `FEED` | Sponsored-post styling (icon + advertiser header, headline, media, body, CTA) for content feeds. |
 | `SPOTLIGHT` | Centred composition (icon, headline, rating, body, media, CTA) for dialogs / empty states. |
+| `ACTION_TOP` | CTA pinned at the top, with icon, headline, advertiser, rating, body and media below it. |
+| `HALF_MEDIA` | Card split ~50/50: media on the left half, headline + advertiser + rating + body + CTA on the right. |
+| `STACKED` | Compact card: "Ad" badge + headline on top, a full-width 120dp media, then a full-width CTA. |
 
 Select any by name from XML (`app:ngad_template="hero"`) or in code (`NativeTemplate.HERO`). All
-templates use rounded, clipped media, a ripple CTA, an "Ad" attribution badge and Roboto typography.
-The three creative templates (`HERO`, `FEED`, `SPOTLIGHT`) ship no shimmer XML — one is
-auto-generated.
+templates use a ripple CTA, an "Ad" attribution badge and Roboto typography; media and icons use
+square-cornered surfaces. The creative templates (`HERO`, `FEED`, `SPOTLIGHT`, `ACTION_TOP`,
+`STACKED`) ship no shimmer XML — one is auto-generated from the layout.
 
 ### Your own custom template
 
@@ -909,6 +914,130 @@ AppOpenAds.get(APP_OPEN_UNIT).show(activity) { proceed() }
 | `isShowing` | — | An app-open ad is currently on screen. |
 | `maxRetries` | `3` | Reload attempts after a failed load (1s/2s/4s backoff). |
 | `minIntervalMs` | `0` | Minimum gap between two app-open ads; `0` disables capping. |
+
+---
+
+## Jetpack Compose
+
+For Compose apps, add the companion **`nextgenads-compose`** module — thin `@Composable` /
+`remember*` wrappers over the same helpers. No ad logic is duplicated: you get the same preload
+cache, retries, premium purge, shimmer, and full-screen exclusivity. It ships **no resources of its
+own** — it renders the library's native templates and shimmers, so everything matches the View/XML
+side.
+
+### Add the dependency
+
+The compose artifact exposes `:nextgenads` transitively (`api`), so you only add the one line:
+
+```kotlin
+// via JitPack
+implementation("com.github.Ali-Hassan785:nextgenads-compose:1.0.0")
+
+// …or as a local module
+implementation(project(":nextgenadscompose"))
+```
+
+Enable Compose in your app module (`android { buildFeatures { compose = true } }`) and call
+`NextGenAds.initialize(...)` once after consent, exactly as on the XML side — the composables don't
+initialize the SDK themselves.
+
+### Inline ads — banner & native
+
+Both are backed by `BannerNativeView`: shimmer while loading, collapse on no-fill, auto-hide when
+premium / remote-off, and auto-destroy when they leave composition.
+
+```kotlin
+import com.alihassan.nextgenadscompose.BannerAd
+import com.alihassan.nextgenadscompose.NativeAd
+
+BannerAd(adUnitId = BANNER_UNIT, size = BannerSize.ADAPTIVE)          // MREC, 320x50, … also supported
+NativeAd(adUnitId = NATIVE_UNIT, template = NativeTemplate.MEDIUM)    // any of the 12 templates
+```
+
+Each accepts `remoteEnabled`, `onLoaded`, `onFailed`. Need to flip banner ↔ native at runtime? Use
+the unified `NextGenAdView(adType = …)` that both delegate to.
+
+### Full-screen ads — interstitial / rewarded / rewarded-interstitial / app-open
+
+Each format has a `remember*` that returns a controller (and preloads on first composition by
+default). The controller resolves the host `Activity` from `LocalContext` when you show.
+
+```kotlin
+val interstitial = rememberInterstitialAd(INTERSTITIAL_UNIT)
+Button(onClick = { interstitial.loadAndShow { goNext() } }) { Text("Next") }
+// also: interstitial.show { }, showEvery(nth = 3) { }, showFirstThenEvery(nth = 4) { }
+
+val rewarded = rememberRewardedAd(REWARDED_UNIT)
+rewarded.loadAndShow(onReward = { grant(it.amount) }, onDismiss = { })
+
+val rewardedInt = rememberRewardedInterstitialAd(REWARDED_INT_UNIT)
+rewardedInt.loadAndShow(onReward = { grant(it.amount) })
+
+val appOpen = rememberAppOpenAd(APP_OPEN_UNIT)
+appOpen.loadAndShow(coverStyle = AppOpenCoverStyle.WELCOME) { proceed() }   // WELCOME cover by default
+```
+
+### Consent, ad events, in-app update & review
+
+```kotlin
+// Gather consent, then initialize (see the Consent / Initialization sections):
+val consent = rememberConsentManager(testDeviceHashedId = /* debug only */ null)
+
+// Register an app-wide listener for the composition's lifetime (auto-unregisters):
+AdEventsEffect(remember { object : AdEventListener {
+    override fun onAdPaid(f: AdFormat, id: String, v: AdValue, r: ResponseInfo?) { logRevenue(v) }
+} })
+
+// Google Play in-app update / review, bound to the host ComponentActivity's lifecycle:
+val updater = rememberInAppUpdateManager(UpdateType.FLEXIBLE) { onNoUpdateAvailable = { /* up to date */ } }
+val review  = rememberInAppReviewManager()
+review.launchReview { goNext() }   // your next action always runs, whether or not the card showed
+```
+
+### Compose splash (cold = interstitial / warm-hot = app-open)
+
+`SplashAdGate` is `Activity`-based, so it works from a Compose splash directly — resolve
+cold-vs-warm once, then delegate. See the sample's `ComposeSplashActivity`:
+
+```kotlin
+class ComposeSplashActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { MaterialTheme { /* branded splash UI */ } }
+        val cold = savedInstanceState?.getBoolean("cold") ?: SplashAdGate.consumeColdStart()
+        ConsentManager.getInstance(this).gatherConsent(this) {
+            NextGenAds.initialize(this, APP_ID) {
+                SplashAdGate.show(
+                    activity = this, coldStart = cold,
+                    interstitialUnitId = INTERSTITIAL_UNIT, appOpenUnitId = APP_OPEN_UNIT,
+                    coldStartAdType = SplashAdType.INTERSTITIAL,   // cold → interstitial
+                    warmStartAdType = SplashAdType.APP_OPEN,       // warm/hot → app-open
+                    onComplete = { goToHome() },
+                )
+            }
+        }
+    }
+}
+```
+
+### Compose API reference
+
+| Composable / helper | Returns / does |
+| --- | --- |
+| `BannerAd(adUnitId, size, …)` | Inline banner (shimmer + no-fill collapse). |
+| `NativeAd(adUnitId, template, …)` | Inline native ad with a built-in template. |
+| `NextGenAdView(adType, …)` | Unified inline ad (switch banner ↔ native). |
+| `rememberInterstitialAd(unit)` | `InterstitialAdController` (`show`, `loadAndShow`, `showEvery`, `showFirstThenEvery`). |
+| `rememberRewardedAd(unit)` | `RewardedAdController` (`show`/`loadAndShow` with `onReward`). |
+| `rememberRewardedInterstitialAd(unit)` | `RewardedInterstitialAdController`. |
+| `rememberAppOpenAd(unit)` | `AppOpenAdController` (`loadAndShow`, `coverStyle`). |
+| `AdEventsEffect(listener)` | Registers an `AdEventListener` for the composition's lifetime. |
+| `rememberConsentManager(hash?)` | The shared `ConsentManager`. |
+| `rememberInAppUpdateManager(type, …)` | Lifecycle-bound Play in-app updater (auto-checks by default). |
+| `rememberInAppReviewManager { }` | Lifecycle-bound Play in-app review; `launchReview { next() }`. |
+
+> The sample app's **ComposeAdsActivity** demonstrates every one of these on a single screen (open it
+> from the XML sample's "Open Compose ads screen" button), with a live show-rate stats table.
 
 ---
 
