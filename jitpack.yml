@@ -6,4 +6,6 @@ before_install:
   - sdk install java 21.0.5-open
   - sdk use java 21.0.5-open
 install:
-  - ./gradlew :nextgenads:publishReleasePublicationToMavenLocal
+  # Publish BOTH modules — JitPack serves whatever lands in ~/.m2, so a module missing here is a
+  # module users cannot resolve. :nextgenadscompose's POM depends on :nextgenads at the same version.
+  - ./gradlew :nextgenads:publishReleasePublicationToMavenLocal :nextgenadscompose:publishReleasePublicationToMavenLocal

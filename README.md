@@ -101,7 +101,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
+    implementation("com.github.Ali-Hassan785:nextgenads:1.2.0")
 }
 ```
 
@@ -153,15 +153,16 @@ consume it from your other apps without making it public. Auth uses your **GitHu
    ```kotlin
    // app/build.gradle.kts
    dependencies {
-       implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
+       implementation("com.github.Ali-Hassan785:nextgenads:1.2.0")
    }
    ```
 
 > In CI, set `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`) as secrets instead of
 > using `gradle.properties`. **Never** hard-code the token in a committed `build.gradle.kts`.
 >
-> Publishing a new version (maintainer, needs `write:packages`):
-> `./gradlew :nextgenads:publishReleasePublicationToGitHubPackagesRepository`.
+> Publishing a new version (maintainer, needs `write:packages`) — publish **both** modules, or
+> Compose consumers can't resolve the wrapper:
+> `./gradlew :nextgenads:publishReleasePublicationToGitHubPackagesRepository :nextgenadscompose:publishReleasePublicationToGitHubPackagesRepository`.
 
 ### 2. Declare your AdMob app id in the manifest
 
@@ -979,7 +980,7 @@ The compose artifact exposes `:nextgenads` transitively (`api`), so you only add
 
 ```kotlin
 // via JitPack
-implementation("com.github.Ali-Hassan785:nextgenads-compose:1.0.0")
+implementation("com.github.Ali-Hassan785:nextgenads-compose:1.2.0")
 
 // …or as a local module
 implementation(project(":nextgenadscompose"))

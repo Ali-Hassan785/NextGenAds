@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-15
+
+### Added
+- **`nextgenads-compose` is now published** — the Jetpack Compose wrapper is distributed as its own
+  artifact instead of being local-module-only:
+
+  ```kotlin
+  implementation("com.github.Ali-Hassan785:nextgenads-compose:1.2.0")
+  ```
+
+  It exposes `:nextgenads` transitively (`api`), so Compose apps add just this one line. `jitpack.yml`
+  now publishes both modules — previously it built only `:nextgenads`, so the
+  `nextgenads-compose:1.0.0` coordinate the README advertised was never actually resolvable.
+
+### Fixed
+- **`nextgenads-compose` now resolves for consumers** — the Compose BOM was declared with
+  `implementation`, so it was published into the runtime variant only. Consumers' *compile* classpath
+  therefore saw `androidx.compose.runtime`, `androidx.compose.ui` and `androidx.compose.foundation`
+  with no version and failed to resolve (`Could not find androidx.compose.foundation:foundation:`).
+  The BOM is now an `api` platform dependency, so it reaches the compile classpath that the
+  versionless Compose artifacts depend on.
+
+### Changed
+- Both modules now share a version, so `nextgenads` and `nextgenads-compose` are always released in
+  lockstep. `nextgenads` 1.2.0 is identical in code to 1.1.0.
+
 ## [1.1.0] - 2026-07-15
 
 ### Added
@@ -132,6 +158,7 @@ Initial release.
 - `com.google.android.ump:user-messaging-platform:4.0.0`
 - `com.facebook.shimmer:shimmer:0.5.0`
 
+[1.2.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.2.0
 [1.1.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.1.0
 [1.0.2]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.2
 [1.0.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.0

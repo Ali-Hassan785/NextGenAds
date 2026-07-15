@@ -39,7 +39,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.Ali-Hassan785"
             artifactId = "nextgenads-compose"
-            version = "1.0.0"
+            version = "1.2.0"
 
             afterEvaluate {
                 from(components["release"])
@@ -66,8 +66,12 @@ dependencies {
     // ad type (AdType, BannerSize, NativeTemplate, RewardItem, the managers …) transitively.
     api(project(":nextgenads"))
 
-    // Jetpack Compose (versions managed by the BOM).
-    implementation(platform(libs.androidx.compose.bom))
+    // Jetpack Compose (versions managed by the BOM). `api`, not `implementation`: the compose
+    // artifacts below are exposed on our api surface without versions of their own, so the BOM has to
+    // reach consumers' compile classpath too. With `implementation` the BOM lands only in the runtime
+    // variant, and a consumer resolving this module gets "androidx.compose.foundation:foundation:"
+    // with an empty version.
+    api(platform(libs.androidx.compose.bom))
     api(libs.androidx.compose.runtime)
     api(libs.androidx.compose.ui)
     api(libs.androidx.compose.foundation)
