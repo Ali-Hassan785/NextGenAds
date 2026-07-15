@@ -13,12 +13,30 @@ All notable changes to this project are documented here. The format is based on
   artifact instead of being local-module-only:
 
   ```kotlin
-  implementation("com.github.Ali-Hassan785:nextgenads-compose:1.2.0")
+  implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.2.0")
   ```
 
   It exposes `:nextgenads` transitively (`api`), so Compose apps add just this one line. `jitpack.yml`
   now publishes both modules — previously it built only `:nextgenads`, so the
   `nextgenads-compose:1.0.0` coordinate the README advertised was never actually resolvable.
+
+### Changed — action needed when upgrading (JitPack)
+- **The JitPack group is now `com.github.Ali-Hassan785.NextGenAds`** (JitPack's multi-module group)
+  because this repo now publishes two artifacts:
+
+  ```kotlin
+  // before (≤ 1.1.0)
+  implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
+  // now
+  implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.2.0")
+  ```
+
+  The flat `com.github.Ali-Hassan785:nextgenads:1.2.0` still resolves, but on a multi-module repo
+  JitPack turns it into an **aggregate** POM that depends on *both* modules — so an XML-only app that
+  just bumps the version silently gains the Compose wrapper and all of Jetpack Compose. Switch to the
+  module coordinate above to keep pulling the core library alone.
+  This affects the JitPack coordinate only; GitHub Packages continues to serve the published
+  `com.github.Ali-Hassan785` group.
 
 ### Fixed
 - **`nextgenads-compose` now resolves for consumers** — the Compose BOM was declared with

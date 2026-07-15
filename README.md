@@ -101,9 +101,17 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785:nextgenads:1.2.0")
+    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.2.0")
 }
 ```
+
+> **Note the group.** Since 1.2.0 this repo publishes two modules (`nextgenads` and
+> `nextgenads-compose`), so each is addressed with JitPack's multi-module group
+> `com.github.<user>.<repo>` — i.e. `com.github.Ali-Hassan785.NextGenAds`. The old flat
+> `com.github.Ali-Hassan785:nextgenads:<version>` still resolves, but as of 1.2.0 it is an
+> **aggregate** that pulls in *both* modules — so an XML-only app would drag in the Compose wrapper
+> and all of Jetpack Compose. Prefer the module coordinate above. (Versions ≤ 1.1.0 published a
+> single module, where the flat coordinate was the library itself.)
 
 **Or as a local module:**
 
@@ -979,12 +987,15 @@ side.
 The compose artifact exposes `:nextgenads` transitively (`api`), so you only add the one line:
 
 ```kotlin
-// via JitPack
-implementation("com.github.Ali-Hassan785:nextgenads-compose:1.2.0")
+// via JitPack — note the multi-module group (com.github.<user>.<repo>)
+implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.2.0")
 
 // …or as a local module
 implementation(project(":nextgenadscompose"))
 ```
+
+> Published since **1.2.0**. Don't use the flat `com.github.Ali-Hassan785:nextgenads-compose` group —
+> JitPack reads the artifact there as a *repository* name, so it returns **401 Unauthorized**.
 
 Enable Compose in your app module (`android { buildFeatures { compose = true } }`) and call
 `NextGenAds.initialize(...)` once after consent, exactly as on the XML side — the composables don't
