@@ -580,11 +580,20 @@ object Interstitials {
     fun get(adUnitId: String): InterstitialAdHelper =
         helpers.getOrPut(adUnitId) { InterstitialAdHelper(adUnitId) }
 
-    /** Convenience: preload an ad unit. */
+    /**
+     * Convenience: preload an ad unit.
+     *
+     * @param onResult invoked on the main thread with `true` once the ad is cached, or `false` if the
+     *   load was refused ([remoteEnabled] off, premium, kill-switch) or failed after the retry budget
+     *   is spent. Fires immediately with `true` when an ad is already cached.
+     */
     @JvmStatic
     @JvmOverloads
-    fun preload(adUnitId: String, remoteEnabled: Boolean = true) =
-        get(adUnitId).load(remoteEnabled = remoteEnabled)
+    fun preload(
+        adUnitId: String,
+        remoteEnabled: Boolean = true,
+        onResult: ((Boolean) -> Unit)? = null,
+    ) = get(adUnitId).load(remoteEnabled = remoteEnabled, onResult = onResult)
 
     /** Drops every cached interstitial across all units (e.g. on going premium / low memory). */
     @JvmStatic

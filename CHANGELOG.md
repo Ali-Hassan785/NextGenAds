@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-15
+
+### Added
+- **`Interstitials.preload` takes a load callback** — the registry convenience now forwards to the
+  `onResult` that `InterstitialAdHelper.load` already accepted, so callers can react to a preload
+  instead of polling `isReady`:
+
+  ```kotlin
+  Interstitials.preload(INTERSTITIAL_UNIT) { loaded ->
+      if (loaded) enableContinueButton()
+  }
+  ```
+
+  Delivered on the main thread. `true` once the ad is cached — immediately, if one already is;
+  `false` if the load was refused (`remoteEnabled` off, premium, kill-switch) or failed **after the
+  retry budget is spent**, so a `false` means "gave up", not "first attempt missed". The parameter is
+  optional and last, so existing Kotlin and compiled Java callers are unaffected (`@JvmOverloads`
+  still emits `preload(String)` and `preload(String, boolean)`).
+
 ## [1.2.0] - 2026-07-15
 
 ### Added
@@ -176,6 +195,7 @@ Initial release.
 - `com.google.android.ump:user-messaging-platform:4.0.0`
 - `com.facebook.shimmer:shimmer:0.5.0`
 
+[1.3.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.3.0
 [1.2.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.2.0
 [1.1.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.1.0
 [1.0.2]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.2

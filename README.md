@@ -101,7 +101,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.2.0")
+    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.3.0")
 }
 ```
 
@@ -161,7 +161,7 @@ consume it from your other apps without making it public. Auth uses your **GitHu
    ```kotlin
    // app/build.gradle.kts
    dependencies {
-       implementation("com.github.Ali-Hassan785:nextgenads:1.2.0")
+       implementation("com.github.Ali-Hassan785:nextgenads:1.3.0")
    }
    ```
 
@@ -777,6 +777,12 @@ built-in templates.
 // Preload once (reused across screens via the registry):
 Interstitials.preload(INTERSTITIAL_UNIT)
 
+// …or observe the result. `true` once the ad is cached (immediately, if one already is); `false` if
+// the load was refused (remoteEnabled off, premium, kill-switch) or failed once retries are spent:
+Interstitials.preload(INTERSTITIAL_UNIT) { loaded ->
+    if (loaded) enableContinueButton()
+}
+
 // Show — onDismiss is always called (immediately if no ad was ready):
 Interstitials.get(INTERSTITIAL_UNIT).show(this) { goToNextScreen() }
 
@@ -988,7 +994,7 @@ The compose artifact exposes `:nextgenads` transitively (`api`), so you only add
 
 ```kotlin
 // via JitPack — note the multi-module group (com.github.<user>.<repo>)
-implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.2.0")
+implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.3.0")
 
 // …or as a local module
 implementation(project(":nextgenadscompose"))

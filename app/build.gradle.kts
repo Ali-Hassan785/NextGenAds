@@ -50,8 +50,8 @@ dependencies {
     // Compose wrapper over :nextgenads — used by ComposeAdsActivity.
     implementation(project(":nextgenadscompose"))
 
-//    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.2.0")
-//    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.2.0")
+//    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.3.0")
+//    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.3.0")
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
