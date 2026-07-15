@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Bare host Activity for instrumented ad-load tests that need a real Activity context
+         (adaptive banners size against the Activity's display). Test-only; not shipped. -->
+    <application>
+        <activity
+            android:name="com.alihassan.nextgenads.AdFillTestActivity"
+            android:exported="true" />
+    </application>
+</manifest>

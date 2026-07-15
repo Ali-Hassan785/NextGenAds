@@ -23,6 +23,7 @@ ready-made splash flow. Everything is tuned for **show rate** and **fill rate**.
 - [Complete implementation (preload + show)](#complete-implementation-preload--show)
 - [Consent (UMP / GDPR)](#consent-ump--gdpr)
 - [Initialization](#initialization)
+- [Debugging & diagnostics](#debugging--diagnostics)
 - [Splash screen (splash interstitial)](#splash-screen-splash-interstitial)
 - [Banner ads](#banner-ads)
 - [Native ads](#native-ads)
@@ -100,7 +101,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785:nextgenads:1.0.2")
+    implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
 }
 ```
 
@@ -152,7 +153,7 @@ consume it from your other apps without making it public. Auth uses your **GitHu
    ```kotlin
    // app/build.gradle.kts
    dependencies {
-       implementation("com.github.Ali-Hassan785:nextgenads:1.0.2")
+       implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
    }
    ```
 
@@ -420,7 +421,54 @@ ready — so you can preload eagerly without racing initialization.
 | `isInitialized(): Boolean` | Whether initialization has completed. |
 | `enabled: Boolean` | Master kill-switch (default `true`). Setting `false` purges & hides all ads. |
 | `loggingEnabled: Boolean` | Verbose Logcat under tag `NextGenAds` (default `true`). |
+| `initializationStatus: InitializationStatus?` | Per-mediation-adapter status after init — see [Debugging & diagnostics](#debugging--diagnostics). |
 | `premium`, `premiumProvider`, `canShowAds()`, `clearAllAds()` | See [Premium](#premium--ad-free-users). |
+
+---
+
+## Debugging & diagnostics
+
+### Video ad audio (mute / volume)
+
+Video and rewarded creatives play audio at the app's ad volume. Mirror your app's own volume / mute
+state so an ad never blasts over (or clashes with) your app's own audio. Both are remembered and
+applied once the SDK is initialized, so they're safe to call any time — including before
+`initialize()` completes:
+
+```kotlin
+NextGenAds.setAppVolume(0.5f)   // 0f–1f fraction of device volume (out-of-range values are clamped)
+NextGenAds.setAppMuted(true)    // mute ad audio, e.g. while your app plays its own; false to unmute
+```
+
+### Ad Inspector
+
+Open the on-device [Ad Inspector](https://developers.google.com/admob/android/ad-inspector) to debug
+live ad requests and mediation. The device must be a registered **test device** (see
+[Initialization](#initialization)'s `testDeviceIds`):
+
+```kotlin
+NextGenAds.openAdInspector { error ->
+    if (error != null) Log.w("Ads", "Ad Inspector: $error")
+}
+```
+
+### Mediation adapter status
+
+After init, inspect each mediation adapter's readiness — a `NOT_READY` adapter silently forfeits that
+network's fill. The library also logs a one-line adapter summary on init (Logcat tag `NextGenAds`):
+
+```kotlin
+NextGenAds.initializationStatus?.adapterStatusMap?.forEach { (name, status) ->
+    Log.d("Ads", "$name → ${status.initializationState}: ${status.description} (${status.latency}ms)")
+}
+```
+
+| Member | Description |
+| --- | --- |
+| `setAppVolume(volume: Float)` | Ad audio volume as `0f`–`1f` of device volume (clamped). Wraps `MobileAds.setUserControlledAppVolume`. |
+| `setAppMuted(muted: Boolean)` | Mute/unmute ad audio. Wraps `MobileAds.setUserMutedApp`. |
+| `openAdInspector(onClosed)` | Opens the on-device Ad Inspector (test devices only); `onClosed` gets `null` on success or a `code: message` string. |
+| `initializationStatus: InitializationStatus?` | Per-mediation-adapter init status, or `null` until init completes. |
 
 ---
 

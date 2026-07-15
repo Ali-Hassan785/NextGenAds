@@ -4,7 +4,9 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.events.AdFormat
@@ -114,8 +116,20 @@ object SplashAppOpenAd {
                 }
                 // Only open the ad while the app is actually resumed in the foreground; if it was
                 // backgrounded during the splash, keep the ad cached and let the host proceed.
-                if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    NextGenAds.log("SplashAppOpenAd: app not resumed (backgrounded during splash) — not showing: $adUnitId")
+                val lifecycle = ProcessLifecycleOwner.get().lifecycle
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    // Backgrounded during the splash: don't open the app-open on the user's return
+                    // (the AppOpenAdManager owns foreground returns). Keep the ad cached — but still
+                    // guarantee we leave the splash: defer completion to the next foreground so
+                    // onComplete fires exactly once instead of never (which would trap the user on the
+                    // splash once the host has handed completion to this flow).
+                    NextGenAds.log("SplashAppOpenAd: app not resumed (backgrounded during splash) — deferring proceed: $adUnitId")
+                    lifecycle.addObserver(object : DefaultLifecycleObserver {
+                        override fun onStart(owner: LifecycleOwner) {
+                            lifecycle.removeObserver(this)
+                            finishOnce() // proceed off the splash; the loaded ad stays cached for later
+                        }
+                    })
                     return@postDelayed
                 }
                 // Bridge the show→render gap with the plain "Loading ad…" cover, never the branded

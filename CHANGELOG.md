@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-15
+
+### Added
+- **Video ad audio** — `NextGenAds.setAppVolume(0f..1f)` and `NextGenAds.setAppMuted(true)` mirror
+  your app's own volume / mute state onto video and rewarded creatives, so an ad never blasts over
+  (or clashes with) your app's audio. Both are remembered and re-applied once the SDK is initialized,
+  so they are safe to call before `initialize()` completes; out-of-range volumes are clamped.
+- **Ad Inspector** — `NextGenAds.openAdInspector { error -> … }` opens the on-device Ad Inspector to
+  debug live ad requests and mediation. Requires a registered test device (see `initialize`'s
+  `testDeviceIds`); `onClosed` receives `null` on success or a short `code: message` string.
+- **Mediation adapter status** — `NextGenAds.initializationStatus` exposes each adapter's
+  `initializationState` / `description` / `latency` after init, so a `NOT_READY` adapter silently
+  forfeiting that network's fill is visible. A one-line adapter summary is also logged on init under
+  the `NextGenAds` tag when `loggingEnabled`.
+
+### Fixed
+- **Splash flows no longer strand the user** — if the app was backgrounded during the splash,
+  `SplashAd` / `SplashAppOpenAd` correctly declined to show the ad but never fired `onComplete`,
+  leaving the user stuck on the splash on their return. Completion is now deferred to the next
+  foreground and fires exactly once; the loaded ad stays cached for later.
+- **`NativeTemplateView` honors the per-format NATIVE toggle** — `setFormatEnabled(AdFormat.NATIVE,
+  false)` now hides an on-screen native template. Previously only a full premium purge cleared it.
+
 ## [1.0.2] - 2026-07-08
 
 ### Added
@@ -109,5 +132,6 @@ Initial release.
 - `com.google.android.ump:user-messaging-platform:4.0.0`
 - `com.facebook.shimmer:shimmer:0.5.0`
 
+[1.1.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.1.0
 [1.0.2]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.2
 [1.0.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.0

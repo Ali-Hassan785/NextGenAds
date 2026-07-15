@@ -4,7 +4,9 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.events.AdFormat
@@ -112,8 +114,20 @@ object SplashAd {
                 // was backgrounded during the splash, showing now would surface the ad on the user's
                 // return — when they expect an app-open ad, not this cold-start interstitial. Keep it
                 // cached and leave navigation to the host (its foreground-return path routes to Main).
-                if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    NextGenAds.log("SplashAd: app not resumed (backgrounded during splash) — not showing: $adUnitId")
+                val lifecycle = ProcessLifecycleOwner.get().lifecycle
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    // Backgrounded during the splash: don't pop this cold-start interstitial on the
+                    // user's return (they'd expect an app-open, not this). Keep the ad cached — but
+                    // still guarantee we leave the splash: defer completion to the next foreground so
+                    // onComplete fires exactly once instead of never (which would trap the user on the
+                    // splash once the host has handed completion to this flow).
+                    NextGenAds.log("SplashAd: app not resumed (backgrounded during splash) — deferring proceed: $adUnitId")
+                    lifecycle.addObserver(object : DefaultLifecycleObserver {
+                        override fun onStart(owner: LifecycleOwner) {
+                            lifecycle.removeObserver(this)
+                            finishOnce() // proceed off the splash; the loaded ad stays cached for later
+                        }
+                    })
                     return@postDelayed
                 }
                 // show() calls onComplete via its dismiss callback; if it can't show, proceed now.

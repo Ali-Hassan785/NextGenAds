@@ -22,6 +22,7 @@ import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.common.RequestConfiguration
 import com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
+import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationStatus
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 import java.util.Collections
 import java.util.WeakHashMap
@@ -483,9 +484,10 @@ object NextGenAds {
         // The Next-Gen SDK requires initialization off the main thread to avoid ANRs.
         Thread({
             try {
-                MobileAds.initialize(appContext, InitializationConfig.Builder(appId).build()) {
+                MobileAds.initialize(appContext, InitializationConfig.Builder(appId).build()) { status ->
                     initialized = true
                     initializing.set(false)
+                    initializationStatus = status
                     // Test-device config must be applied AFTER initialize on the Next-Gen SDK — calling
                     // setRequestConfiguration before init throws "MobileAds.initialize must be called
                     // first". Apply it here, before the queued callbacks / warmUp fire a request, so
@@ -496,6 +498,7 @@ object NextGenAds {
                         )
                     }
                     log("GMA Next-Gen SDK initialized")
+                    logAdapterStatuses(status)
                     val callbacks: List<Runnable>
                     synchronized(this) {
                         callbacks = pendingCallbacks.toList()
@@ -517,6 +520,74 @@ object NextGenAds {
 
     @JvmStatic
     fun isInitialized(): Boolean = initialized
+
+    /**
+     * Per-mediation-adapter initialization status from the last completed [initialize], or `null`
+     * until init finishes. Inspect it to confirm every mediation adapter came up **READY** — a
+     * `NOT_READY` adapter silently forfeits that network's fill:
+     *
+     * ```
+     * NextGenAds.initializationStatus?.adapterStatusMap?.forEach { (name, s) ->
+     *     Log.d("Ads", "$name → ${s.initializationState}: ${s.description}")
+     * }
+     * ```
+     */
+    @Volatile
+    @JvmStatic
+    var initializationStatus: InitializationStatus? = null
+        private set
+
+    // ---------------------------------------------------------------------------------------------
+    // Video ad audio (mute / volume)
+    //
+    // Video and rewarded creatives play audio at the app's ad volume. Mirror your app's own volume
+    // slider / mute state here so an ad never blasts over (or clashes with) your app's audio. Both
+    // are remembered and (re)applied once the SDK is initialized, so they're safe to call at any
+    // time — including from Application.onCreate before initialize() completes.
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Sets the app ad volume as a fraction `0.0`–`1.0` of the device volume for video/rewarded ads
+     * (wraps `MobileAds.setUserControlledAppVolume`). `0f` silences ad audio; `1f` (default) plays at
+     * device volume. Out-of-range values are clamped.
+     */
+    @JvmStatic
+    fun setAppVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        whenInitialized { runCatching { MobileAds.setUserControlledAppVolume(clamped) } }
+    }
+
+    /**
+     * Mutes/unmutes app ad audio for video/rewarded ads (wraps `MobileAds.setUserMutedApp`). Mute
+     * while your app plays its own audio, then unmute after. Independent of [setAppVolume].
+     */
+    @JvmStatic
+    fun setAppMuted(muted: Boolean) {
+        whenInitialized { runCatching { MobileAds.setUserMutedApp(muted) } }
+    }
+
+    /**
+     * Opens the on-device **Ad Inspector** (wraps `MobileAds.openAdInspector`) to debug live ad
+     * requests and mediation. The calling device must be a registered test device (see
+     * [initialize]'s `testDeviceIds`). Waits for the SDK to be initialized, then opens on the main
+     * thread.
+     *
+     * @param onClosed invoked (on the main thread) when the inspector is dismissed — with `null` on
+     *   success, or a short `code: message` string if it couldn't open.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun openAdInspector(onClosed: ((error: String?) -> Unit)? = null) = whenInitialized {
+        val result = runCatching {
+            MobileAds.openAdInspector { error ->
+                runOnMain { onClosed?.invoke(error?.let { "${it.code}: ${it.message}" }) }
+            }
+        }
+        result.onFailure { t ->
+            log("openAdInspector failed", t)
+            runOnMain { onClosed?.invoke(t.message ?: "ad inspector unavailable") }
+        }
+    }
 
     /**
      * Runs [action] on the main thread once the SDK is initialized.
@@ -662,6 +733,17 @@ object NextGenAds {
     /** Resets all request counters (e.g. between test runs). */
     @JvmStatic
     fun resetRequestCounts() = requestCounts.clear()
+
+    /** Logs each mediation adapter's initialization state + latency (only when logging is on). */
+    private fun logAdapterStatuses(status: InitializationStatus) {
+        if (!loggingEnabled) return
+        val map = runCatching { status.adapterStatusMap }.getOrNull() ?: return
+        if (map.isEmpty()) return
+        val summary = map.entries.joinToString("; ") { (name, s) ->
+            "$name=${s.initializationState}(${s.latency}ms)"
+        }
+        log("Mediation adapters (${map.size}): $summary — total ${status.totalLatency}ms")
+    }
 
     internal fun log(message: String) {
         if (loggingEnabled) Log.d(TAG, message)

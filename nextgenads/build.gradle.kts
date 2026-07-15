@@ -20,6 +20,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    testOptions {
+        unitTests {
+            // Let local JVM unit tests exercise classes that touch android.jar stubs (SystemClock,
+            // Log) — the stubs return default values instead of throwing "not mocked". Used by
+            // ShowRateTrackerTest, whose counter/percentage logic is otherwise pure Kotlin.
+            isReturnDefaultValues = true
+        }
+    }
+
     // Expose a single publishable "release" variant (with sources) for maven-publish / JitPack.
     publishing {
         singleVariant("release") {
@@ -33,7 +42,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.Ali-Hassan785"
             artifactId = "nextgenads"
-            version = "1.0.2"
+            version = "1.1.0"
 
             afterEvaluate {
                 from(components["release"])

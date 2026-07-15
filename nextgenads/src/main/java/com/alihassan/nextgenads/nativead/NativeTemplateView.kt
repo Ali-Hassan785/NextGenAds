@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.annotation.LayoutRes
 import com.alihassan.nextgenads.NextGenAds
 import com.alihassan.nextgenads.R
+import com.alihassan.nextgenads.events.AdFormat
 import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
@@ -301,6 +302,14 @@ class NativeTemplateView @JvmOverloads constructor(
         boundAd = null
         showError()
     }
+
+    /**
+     * This slot always shows a native ad, so a single-format toggle for [AdFormat.NATIVE]
+     * ([NextGenAds.setFormatEnabled]) hides it. Without this override the default `null` meant a
+     * per-format NATIVE toggle left the on-screen ad visible (only a full premium purge cleared it).
+     */
+    override val slotAdFormat: AdFormat
+        get() = AdFormat.NATIVE
 
     /** Releases the bound ad and stops the shimmer. Call from the host's `onDestroy`. */
     fun destroy() {
