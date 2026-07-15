@@ -214,21 +214,21 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * request one and show it the moment it loads — a higher-show-rate alternative to [show] for a
      * trigger point where nothing was preloaded.
      *
-     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onDismiss] fires so the caller
+     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onComplete] fires so the caller
      * proceeds, and the in-flight load is left to warm the cache for next time. `0` waits for the
      * load result (which is itself bounded by the retry budget).
      *
-     * [onDismiss] is invoked exactly once — after the ad is dismissed, on failure/timeout, or
+     * [onComplete] is invoked exactly once — after the ad is dismissed, on failure/timeout, or
      * synchronously when ads are disabled.
      */
     @JvmOverloads
-    fun loadAndShow(activity: Activity, timeoutMs: Long = 0L, onDismiss: () -> Unit = {}) {
+    fun loadAndShow(activity: Activity, timeoutMs: Long = 0L, onComplete: () -> Unit = {}) {
         if (!NextGenAds.canShowAds(AdFormat.INTERSTITIAL)) {
-            onDismiss()
+            onComplete()
             return
         }
         if (isReady) {
-            show(activity, onDismiss)
+            show(activity, onComplete)
             return
         }
 
@@ -244,7 +244,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
             settled = true
             overlay?.let { removeLoadingOverlay(it) }
             NextGenAds.log("Interstitial load timed out ($adUnitId); proceeding")
-            onDismiss()
+            onComplete()
         }
         if (timeoutMs > 0) handler.postDelayed(timeoutRunnable, timeoutMs)
 
@@ -262,15 +262,15 @@ class InterstitialAdHelper(private val adUnitId: String) {
                 val reveal = Runnable {
                     if (activity.isFinishing || activity.isDestroyed) {
                         overlay?.let { removeLoadingOverlay(it) }
-                        onDismiss()
+                        onComplete()
                     } else {
-                        show(activity, onDismiss, overlay)
+                        show(activity, onComplete, overlay)
                     }
                 }
                 if (remaining > 0) handler.postDelayed(reveal, remaining) else reveal.run()
             } else {
                 overlay?.let { removeLoadingOverlay(it) }
-                onDismiss()
+                onComplete()
             }
         }
     }
@@ -282,13 +282,13 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * @param preloadedOverlay a full-screen loader already on screen (e.g. the "Loading ad…" cover
      *   raised by [loadAndShow] during the fetch). When non-null it is reused — its text is flipped
      *   to "Showing ad…" for the interlude — so there's no remove/re-add flicker between phases.
-     * @return `true` if the ad is being shown. When `false`, [onDismiss] has already been invoked
+     * @return `true` if the ad is being shown. When `false`, [onComplete] has already been invoked
      *   synchronously so the caller can proceed immediately (no ad was available).
      */
-    fun show(activity: Activity, onDismiss: () -> Unit, preloadedOverlay: View? = null): Boolean {
+    fun show(activity: Activity, onComplete: () -> Unit, preloadedOverlay: View? = null): Boolean {
         if (!NextGenAds.canShowAds(AdFormat.INTERSTITIAL)) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
         evictIfExpired()
@@ -297,7 +297,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         val capped = minIntervalMs > 0 && lastShownElapsed > 0 && now - lastShownElapsed < minIntervalMs
         if (ad == null || capped) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             if (autoReload) load() // opt-in: make the next attempt have an ad ready
             return false
         }
@@ -305,11 +305,11 @@ class InterstitialAdHelper(private val adUnitId: String) {
             // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
             NextGenAds.log("Interstitial show skipped ($adUnitId): a full-screen ad is already showing")
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
         // Committed: take ownership of the cached ad so a concurrent show()/load() can't reuse it
-        // (its event callback is now bound to this caller's onDismiss).
+        // (its event callback is now bound to this caller's onComplete).
         showing = true
         interstitialAd = null
 
@@ -342,7 +342,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.INTERSTITIAL, adUnitId)
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -354,7 +354,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                     NextGenAds.log("Interstitial show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.INTERSTITIAL, adUnitId, fullScreenContentError)
                     if (autoReload) load()
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -398,7 +398,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
                 // would pop an ad at an unexpected moment. Keep it cached for the next trigger.
                 dismissOverlay()
                 abortShow()
-                onDismiss()
+                onComplete()
                 return@postDelayed
             }
             ad.show(activity)
@@ -457,19 +457,19 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * is ready.
      *
      * @return `true` if an ad is being shown or (when forced) is being loaded to show; `false` only
-     *   when nothing is ready and [forceLoad] is off — in which case [onDismiss] has already fired.
+     *   when nothing is ready and [forceLoad] is off — in which case [onComplete] has already fired.
      */
     private fun showOrForceLoad(
         activity: Activity,
         forceLoad: Boolean,
         timeoutMs: Long,
-        onDismiss: () -> Unit,
+        onComplete: () -> Unit,
     ): Boolean {
         if (forceLoad && !isReady) {
-            loadAndShow(activity, timeoutMs, onDismiss)
+            loadAndShow(activity, timeoutMs, onComplete)
             return true
         }
-        return show(activity, onDismiss)
+        return show(activity, onComplete)
     }
 
     /**
@@ -484,7 +484,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * only show an already-ready ad.
      *
      * Because helpers are shared per ad unit (via [Interstitials]), the counter is app-wide for
-     * that unit. [onDismiss] is always invoked (immediately when this call doesn't show an ad), so
+     * that unit. [onComplete] is always invoked (immediately when this call doesn't show an ad), so
      * callers can proceed uniformly.
      *
      * @param nth show on every Nth call; values `<= 1` show on every call.
@@ -499,14 +499,14 @@ class InterstitialAdHelper(private val adUnitId: String) {
         nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ): Boolean {
         triggerCount++
         if (nth > 1 && triggerCount % nth != 0) {
-            onDismiss()
+            onComplete()
             return false
         }
-        return showOrForceLoad(activity, forceLoad, timeoutMs, onDismiss)
+        return showOrForceLoad(activity, forceLoad, timeoutMs, onComplete)
     }
 
     /**
@@ -519,7 +519,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * demand and shown as soon as it loads (via [loadAndShow], bounded by [timeoutMs]) instead of
      * skipping. Leave it `false` (default) to only show an already-ready ad.
      *
-     * The readiness check and frequency cap of [show] still apply; [onDismiss] is always invoked so
+     * The readiness check and frequency cap of [show] still apply; [onComplete] is always invoked so
      * callers can proceed uniformly. Because helpers are shared per ad unit (via [Interstitials]),
      * the counter is app-wide.
      *
@@ -535,16 +535,16 @@ class InterstitialAdHelper(private val adUnitId: String) {
         nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ): Boolean {
         val count = ++triggerCount
         // Show on 1, then 1 + nth, 1 + 2*nth … i.e. whenever (count - 1) is a multiple of nth.
         val shouldShow = nth <= 1 || (count - 1) % nth == 0
         if (!shouldShow) {
-            onDismiss()
+            onComplete()
             return false
         }
-        return showOrForceLoad(activity, forceLoad, timeoutMs, onDismiss)
+        return showOrForceLoad(activity, forceLoad, timeoutMs, onComplete)
     }
 
     /** Resets the [showEvery] / [showFirstThenEvery] counter back to zero. */
@@ -606,8 +606,8 @@ object Interstitials {
         activity: Activity,
         adUnitId: String,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
-    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss)
+        onComplete: () -> Unit = {},
+    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onComplete)
 
     /**
      * Convenience: counter-gated show for an ad unit — shows the interstitial on every [nth]-th
@@ -622,8 +622,8 @@ object Interstitials {
         nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
-    ): Boolean = get(adUnitId).showEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
+        onComplete: () -> Unit = {},
+    ): Boolean = get(adUnitId).showEvery(activity, nth, forceLoad, timeoutMs, onComplete)
 
     /**
      * Convenience: "show first, then every Nth" counter-gated show — shows on the first call and
@@ -639,6 +639,6 @@ object Interstitials {
         nth: Int = 1,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
-    ): Boolean = get(adUnitId).showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
+        onComplete: () -> Unit = {},
+    ): Boolean = get(adUnitId).showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onComplete)
 }

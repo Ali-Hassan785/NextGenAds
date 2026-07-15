@@ -211,18 +211,18 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * On-demand "request and show": show the cached ad immediately if one is ready, otherwise
      * request one and show it the moment it loads. Ideal for a splash gate.
      *
-     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onDismiss] fires so the caller
+     * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onComplete] fires so the caller
      * can proceed into the app, and the in-flight load is left to finish for the next opportunity
      * (a late ad is never shown over app content). `0` waits indefinitely for the load result.
      *
-     * [onDismiss] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
+     * [onComplete] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
      * or synchronously when ads are disabled / one is already showing.
      *
      * [coverStyle] picks the full-screen cover used while fetching and bridging to the ad: the branded
      * [AppOpenCoverStyle.WELCOME] (default) or the plain [AppOpenCoverStyle.LOADING] spinner.
      *
      * [canShow] is re-checked the instant the ad lands (before it is shown); if it returns `false`
-     * the ad is kept cached and [onDismiss] fires instead. The auto-show manager uses this to bail
+     * the ad is kept cached and [onComplete] fires instead. The auto-show manager uses this to bail
      * when the app was backgrounded during the fetch, so a late ad never pops over app content.
      */
     @JvmOverloads
@@ -231,14 +231,14 @@ class AppOpenAdHelper(private val adUnitId: String) {
         timeoutMs: Long = 0L,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
         canShow: () -> Boolean = { true },
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ) {
         if (!NextGenAds.canShowAds(AdFormat.APP_OPEN) || showing) {
-            onDismiss()
+            onComplete()
             return
         }
         if (isReady) {
-            show(activity, onDismiss, coverStyle = coverStyle)
+            show(activity, onComplete, coverStyle = coverStyle)
             return
         }
 
@@ -255,7 +255,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
             settled = true
             overlay?.let { removeLoadingOverlay(it) }
             NextGenAds.log("AppOpen load timed out ($adUnitId); proceeding")
-            onDismiss()
+            onComplete()
         }
         if (timeoutMs > 0) handler.postDelayed(timeoutRunnable, timeoutMs)
 
@@ -267,10 +267,10 @@ class AppOpenAdHelper(private val adUnitId: String) {
             // the load was in flight; keep the ad cached for the next foreground rather than showing
             // over a dead window / app content.
             if (loaded && isReady && !activity.isFinishing && !activity.isDestroyed && canShow()) {
-                show(activity, onDismiss, overlay)
+                show(activity, onComplete, overlay)
             } else {
                 overlay?.let { removeLoadingOverlay(it) }
-                onDismiss()
+                onComplete()
             }
         }
     }
@@ -288,21 +288,21 @@ class AppOpenAdHelper(private val adUnitId: String) {
      * @param coverStyle which cover to raise when [showCover] is on: the branded [AppOpenCoverStyle.WELCOME]
      *   (default) or the plain [AppOpenCoverStyle.LOADING] spinner — e.g. a splash gate uses `LOADING`
      *   so a "Welcome back" cover never appears on the splash.
-     * @return `true` if the ad is being shown. When `false`, [onDismiss] has already been invoked
+     * @return `true` if the ad is being shown. When `false`, [onComplete] has already been invoked
      *   synchronously so the caller can proceed immediately (no ad was available), and a fresh load
      *   has been kicked off.
      */
     @JvmOverloads
     fun show(
         activity: Activity,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
         preloadedOverlay: View? = null,
         showCover: Boolean = true,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
     ): Boolean {
         if (!NextGenAds.canShowAds(AdFormat.APP_OPEN) || showing) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
         val ad = appOpenAd
@@ -311,7 +311,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
         if (ad == null || isExpired || capped) {
             if (isExpired) appOpenAd = null
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             if (autoReload) load() // opt-in: make the next attempt have a fresh ad ready
             return false
         }
@@ -319,7 +319,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
             // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
             NextGenAds.log("AppOpen show skipped ($adUnitId): a full-screen ad is already showing")
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
 
@@ -356,7 +356,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     lastShownElapsed = SystemClock.elapsedRealtime()
                     if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.APP_OPEN, adUnitId)
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -368,7 +368,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                     NextGenAds.log("AppOpen show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.APP_OPEN, adUnitId, fullScreenContentError)
                     if (autoReload) load()
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -415,7 +415,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
                 // would pop an ad at an unexpected moment. Keep it cached for the next return.
                 dismissOverlay()
                 abortShow()
-                onDismiss()
+                onComplete()
                 return@postDelayed
             }
             ad.show(activity)
@@ -557,8 +557,8 @@ object AppOpenAds {
         activity: Activity,
         adUnitId: String,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
-    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onDismiss = onDismiss)
+        onComplete: () -> Unit = {},
+    ) = get(adUnitId).loadAndShow(activity, timeoutMs, onComplete = onComplete)
 }
 
 /**

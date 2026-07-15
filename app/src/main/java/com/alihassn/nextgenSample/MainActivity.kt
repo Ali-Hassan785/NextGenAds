@@ -444,7 +444,7 @@ class MainActivity : AppCompatActivity() {
                             .setPositiveButton("OK", null)
                             .show()
                     },
-                    onDismiss = {
+                    onComplete = {
                         // Always fires when the ad closes — distinguish "earned" from "closed early".
                         setStatus(
                             if (earned) "Rewarded closed — reward granted ✓ (balance: $rewardBalance)"
@@ -496,7 +496,7 @@ class MainActivity : AppCompatActivity() {
                             .setPositiveButton("OK", null)
                             .show()
                     },
-                    onDismiss = {
+                    onComplete = {
                         // Always fires when the ad closes — distinguish "earned" from "closed early".
                         setStatus(
                             if (earned) "Rewarded interstitial closed — reward granted ✓ (balance: $rewardBalance)"

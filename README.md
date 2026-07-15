@@ -101,7 +101,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.3.0")
+    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.4.0")
 }
 ```
 
@@ -161,7 +161,7 @@ consume it from your other apps without making it public. Auth uses your **GitHu
    ```kotlin
    // app/build.gradle.kts
    dependencies {
-       implementation("com.github.Ali-Hassan785:nextgenads:1.3.0")
+       implementation("com.github.Ali-Hassan785:nextgenads:1.4.0")
    }
    ```
 
@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showInterstitial() {
         // Shows the cached ad instantly if ready, otherwise requests one (bounded by the timeout).
-        // onDismiss always fires — even when no ad could be shown — so your flow stays uniform.
+        // onComplete always fires — even when no ad could be shown — so your flow stays uniform.
         Interstitials.get(INTERSTITIAL_UNIT).loadAndShow(this, timeoutMs = 8_000L) {
             goToNextScreen()
         }
@@ -306,7 +306,7 @@ class MainActivity : AppCompatActivity() {
         if (!helper.isReady) Interstitials.preload(INTERSTITIAL_UNIT)
         counterClicks++
 
-        // showFirstThenEvery tracks the counter for you; onDismiss fires on the shown clicks.
+        // showFirstThenEvery tracks the counter for you; onComplete fires on the shown clicks.
         // forceLoad = true loads on demand (bounded by timeoutMs) if the gate opens with no cached ad.
         val shown = helper.showFirstThenEvery(this, nth = 4, forceLoad = true, timeoutMs = 5_000L) {
             goToNextScreen()
@@ -352,7 +352,7 @@ The corresponding layout just needs the banner container and the native view:
 | Step | Why |
 | --- | --- |
 | Preload in the `initialize` callback | The cache is warm before the user reaches any placement, so the first show is instant instead of showing a shimmer. |
-| `loadAndShow` for the plain interstitial | One call handles both cases — show the cached ad, or request+show on demand — and `onDismiss` always fires, so navigation is uniform. |
+| `loadAndShow` for the plain interstitial | One call handles both cases — show the cached ad, or request+show on demand — and `onComplete` always fires, so navigation is uniform. |
 | `showFirstThenEvery` for the counter | The library tracks the per-unit counter app-wide; you don't keep your own modulo logic. `nth = 4` → shows on 1, 5, 9, 13 … |
 | Re-`preload` after a non-show click | Keeps an ad ready for the *next* gated-in click, so it too shows without a visible load. |
 | `forceLoad = true` | Safety net: if the gate opens and no ad is cached yet (e.g. click #1, or a splash consumed the unit), it loads on demand within `timeoutMs` instead of silently skipping. |
@@ -783,7 +783,7 @@ Interstitials.preload(INTERSTITIAL_UNIT) { loaded ->
     if (loaded) enableContinueButton()
 }
 
-// Show — onDismiss is always called (immediately if no ad was ready):
+// Show — onComplete is always called (immediately if no ad was ready):
 Interstitials.get(INTERSTITIAL_UNIT).show(this) { goToNextScreen() }
 
 // Load on demand and show as soon as it's ready (bounded by a timeout):
@@ -807,7 +807,7 @@ a time — a `show()` while another is presenting is refused and the ad stays ca
 ### Counter-gated shows
 
 Show on every Nth trigger without tracking a counter yourself. The counter is app-wide per unit;
-`onDismiss` still fires on the in-between calls so your flow stays uniform.
+`onComplete` still fires on the in-between calls so your flow stays uniform.
 
 ```kotlin
 // Show on the 3rd, 6th, 9th … call:
@@ -838,7 +838,7 @@ RewardedAds.preload(REWARDED_UNIT)
 RewardedAds.get(REWARDED_UNIT).show(
     activity = this,
     onReward = { reward -> grantCoins(reward.amount) },  // reward.amount: Int, reward.type: String
-    onDismiss = { /* closed, with or without a reward */ },
+    onComplete = { /* closed, with or without a reward */ },
 )
 ```
 
@@ -867,7 +867,7 @@ RewardedInterstitials.preload(REWARDED_INT_UNIT)
 RewardedInterstitials.get(REWARDED_INT_UNIT).show(
     activity = this,
     onReward = { reward -> grantCoins(reward.amount) },
-    onDismiss = { /* closed */ },
+    onComplete = { /* closed */ },
 )
 ```
 
@@ -935,7 +935,7 @@ class SplashActivity : AppCompatActivity() {
                     // Cold: a splash interstitial (see the Splash screen section).
                     SplashAd.show(this, INTERSTITIAL_UNIT, minDelayMs = 1_500L, timeoutMs = 8_000L) { goToMain() }
                 } else {
-                    // Warm / hot: an app-open ad, on the splash. onDismiss fires on close / timeout / no-ad.
+                    // Warm / hot: an app-open ad, on the splash. onComplete fires on close / timeout / no-ad.
                     AppOpenAds.loadAndShow(this, APP_OPEN_UNIT, timeoutMs = 8_000L) { goToMain() }
                 }
             }
@@ -967,7 +967,7 @@ your content.
 ```kotlin
 AppOpenAds.preload(APP_OPEN_UNIT)
 
-// Show at your own chosen moment; onDismiss fires immediately if no ad is ready.
+// Show at your own chosen moment; onComplete fires immediately if no ad is ready.
 AppOpenAds.get(APP_OPEN_UNIT).show(activity) { proceed() }
 ```
 
@@ -994,7 +994,7 @@ The compose artifact exposes `:nextgenads` transitively (`api`), so you only add
 
 ```kotlin
 // via JitPack — note the multi-module group (com.github.<user>.<repo>)
-implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.3.0")
+implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.4.0")
 
 // …or as a local module
 implementation(project(":nextgenadscompose"))
@@ -1034,7 +1034,7 @@ Button(onClick = { interstitial.loadAndShow { goNext() } }) { Text("Next") }
 // also: interstitial.show { }, showEvery(nth = 3) { }, showFirstThenEvery(nth = 4) { }
 
 val rewarded = rememberRewardedAd(REWARDED_UNIT)
-rewarded.loadAndShow(onReward = { grant(it.amount) }, onDismiss = { })
+rewarded.loadAndShow(onReward = { grant(it.amount) }, onComplete = { })
 
 val rewardedInt = rememberRewardedInterstitialAd(REWARDED_INT_UNIT)
 rewardedInt.loadAndShow(onReward = { grant(it.amount) })
@@ -1142,7 +1142,7 @@ premium.
 Register a single `AdEventListener` once and receive **every** ad lifecycle event from **every**
 format — load, show, dismiss, impression, click, paid-revenue and reward — without threading
 callbacks through each call site. This is the recommended hook for analytics and ROAS / ad-revenue
-measurement. Per-call callbacks (`onDismiss`, `onReward`, …) still fire; events are additive.
+measurement. Per-call callbacks (`onComplete`, `onReward`, …) still fire; events are additive.
 
 All callbacks are delivered on the **main thread**, and one listener throwing never stops the others.
 

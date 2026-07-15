@@ -283,7 +283,7 @@ private fun ComposeAdsScreen(onBack: () -> Unit) {
                     status = "Loading rewarded…"
                     rewarded.loadAndShow(
                         onReward = { status = "Reward earned ✓ +${it.amount} ${it.type}" },
-                        onDismiss = { if (!status.startsWith("Reward")) status = "Rewarded closed — no reward" },
+                        onComplete = { if (!status.startsWith("Reward")) status = "Rewarded closed — no reward" },
                     )
                 }
             }) { Text("Watch to earn") }
@@ -300,7 +300,7 @@ private fun ComposeAdsScreen(onBack: () -> Unit) {
                     status = "Loading rewarded interstitial…"
                     rewardedInt.loadAndShow(
                         onReward = { status = "Reward earned ✓ +${it.amount} ${it.type}" },
-                        onDismiss = { if (!status.startsWith("Reward")) status = "Rewarded interstitial closed" },
+                        onComplete = { if (!status.startsWith("Reward")) status = "Rewarded interstitial closed" },
                     )
                 }
             }) { Text("Watch to earn") }

@@ -42,7 +42,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.Ali-Hassan785"
             artifactId = "nextgenads"
-            version = "1.3.0"
+            version = "1.4.0"
 
             afterEvaluate {
                 from(components["release"])

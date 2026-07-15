@@ -12,7 +12,7 @@ import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 /**
  * Compose controller for a single rewarded ad unit. Obtain one with [rememberRewardedAd]. The
  * [onReward] you pass to [show] / [loadAndShow] fires only when the user actually earns the reward;
- * [onDismiss] always fires when the ad closes.
+ * [onComplete] always fires when the ad closes.
  */
 @Stable
 class RewardedAdController internal constructor(
@@ -30,26 +30,26 @@ class RewardedAdController internal constructor(
     }
 
     /**
-     * Shows a preloaded ad if ready; otherwise invokes [onDismiss] immediately. [onReward] fires
+     * Shows a preloaded ad if ready; otherwise invokes [onComplete] immediately. [onReward] fires
      * with the earned [RewardItem] only if the user completes the ad.
      */
-    fun show(onReward: (RewardItem) -> Unit, onDismiss: () -> Unit = {}) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.show(activity, onReward, onDismiss)
+    fun show(onReward: (RewardItem) -> Unit, onComplete: () -> Unit = {}) {
+        val activity = activityProvider() ?: return onComplete()
+        helper.show(activity, onReward, onComplete)
     }
 
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind a loading cover) and shows it.
-     * [onReward] fires only on a completed view; [onDismiss] always fires when the ad closes or on
+     * [onReward] fires only on a completed view; [onComplete] always fires when the ad closes or on
      * a [timeoutMs] timeout.
      */
     fun loadAndShow(
         onReward: (RewardItem) -> Unit,
         timeoutMs: Long = 10_000L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.loadAndShow(activity, onReward, timeoutMs, onDismiss)
+        val activity = activityProvider() ?: return onComplete()
+        helper.loadAndShow(activity, onReward, timeoutMs, onComplete)
     }
 }
 
@@ -59,7 +59,7 @@ class RewardedAdController internal constructor(
  * ```
  * val rewarded = rememberRewardedAd(REWARDED_UNIT)
  * Button(onClick = {
- *     rewarded.loadAndShow(onReward = { grant(it.amount) }, onDismiss = { })
+ *     rewarded.loadAndShow(onReward = { grant(it.amount) }, onComplete = { })
  * }) { Text("Watch to earn") }
  * ```
  */

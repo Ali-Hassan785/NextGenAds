@@ -63,7 +63,7 @@ class RewardedAdHelper(private val adUnitId: String) {
      * [autoReloadTimeoutMs]) instead of giving up.
      *
      * Default `false` so a preloaded ad results in a **single** request — no extra load per show, and
-     * a [show] with no cached ad simply invokes `onDismiss` (returning `false`) so the caller can
+     * a [show] with no cached ad simply invokes `onComplete` (returning `false`) so the caller can
      * show its own "ad not ready" message. Preload explicitly via [load] / [RewardedAds.preload], or
      * call [loadAndShow] yourself for on-demand load-and-show.
      */
@@ -207,22 +207,22 @@ class RewardedAdHelper(private val adUnitId: String) {
      * On-demand "request and show": show the cached ad immediately if ready, otherwise request one
      * and show it the moment it loads — higher show-rate than [show] when nothing was preloaded.
      *
-     * [timeoutMs] bounds the wait; if it elapses first, [onDismiss] fires (no reward) and the load
-     * is left to warm the cache. `0` waits for the load result. [onDismiss] is invoked exactly once.
+     * [timeoutMs] bounds the wait; if it elapses first, [onComplete] fires (no reward) and the load
+     * is left to warm the cache. `0` waits for the load result. [onComplete] is invoked exactly once.
      */
     @JvmOverloads
     fun loadAndShow(
         activity: Activity,
         onReward: (RewardItem) -> Unit,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ) {
         if (!NextGenAds.canShowAds(AdFormat.REWARDED)) {
-            onDismiss()
+            onComplete()
             return
         }
         if (isReady) {
-            show(activity, onReward, onDismiss)
+            show(activity, onReward, onComplete)
             return
         }
 
@@ -238,7 +238,7 @@ class RewardedAdHelper(private val adUnitId: String) {
             settled = true
             overlay?.let { removeLoadingOverlay(it) }
             NextGenAds.log("Rewarded load timed out ($adUnitId); proceeding")
-            onDismiss()
+            onComplete()
         }
         if (timeoutMs > 0) handler.postDelayed(timeoutRunnable, timeoutMs)
 
@@ -254,15 +254,15 @@ class RewardedAdHelper(private val adUnitId: String) {
                 val reveal = Runnable {
                     if (activity.isFinishing || activity.isDestroyed) {
                         overlay?.let { removeLoadingOverlay(it) }
-                        onDismiss()
+                        onComplete()
                     } else {
-                        show(activity, onReward, onDismiss, overlay)
+                        show(activity, onReward, onComplete, overlay)
                     }
                 }
                 if (remaining > 0) handler.postDelayed(reveal, remaining) else reveal.run()
             } else {
                 overlay?.let { removeLoadingOverlay(it) }
-                onDismiss()
+                onComplete()
             }
         }
     }
@@ -271,7 +271,7 @@ class RewardedAdHelper(private val adUnitId: String) {
      * Shows the ad if one is ready, then preloads the next one.
      *
      * @param onReward invoked with the earned [RewardItem] when the user completes the ad.
-     * @param onDismiss invoked when the ad is closed (whether or not a reward was earned). If no ad
+     * @param onComplete invoked when the ad is closed (whether or not a reward was earned). If no ad
      *   is ready it is called immediately and the method returns `false`.
      * @return `true` if the ad is being shown.
      */
@@ -279,12 +279,12 @@ class RewardedAdHelper(private val adUnitId: String) {
     fun show(
         activity: Activity,
         onReward: (RewardItem) -> Unit,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
         preloadedOverlay: View? = null,
     ): Boolean {
         if (!NextGenAds.canShowAds(AdFormat.REWARDED)) {
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
         evictIfExpired()
@@ -294,17 +294,17 @@ class RewardedAdHelper(private val adUnitId: String) {
             // one on demand and show it; otherwise fail fast so the caller can show its own message.
             preloadedOverlay?.let { removeLoadingOverlay(it) }
             if (autoReload) {
-                loadAndShow(activity, onReward, autoReloadTimeoutMs, onDismiss)
+                loadAndShow(activity, onReward, autoReloadTimeoutMs, onComplete)
                 return true
             }
-            onDismiss()
+            onComplete()
             return false
         }
         if (showing || !NextGenAds.tryBeginFullScreenShow()) {
             // Another full-screen ad (any format) is on screen — never stack. Ad stays cached.
             NextGenAds.log("Rewarded show skipped ($adUnitId): a full-screen ad is already showing")
             preloadedOverlay?.let { removeLoadingOverlay(it) }
-            onDismiss()
+            onComplete()
             return false
         }
         // Committed: take ownership so a concurrent show()/load() can't grab the same ad.
@@ -338,7 +338,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                     NextGenAds.endFullScreenShow()
                     if (autoReload) load()
                     NextGenAds.dispatchDismissed(AdFormat.REWARDED, adUnitId)
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -350,7 +350,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                     NextGenAds.log("Rewarded show failed ($adUnitId): $fullScreenContentError")
                     NextGenAds.dispatchFailedToShow(AdFormat.REWARDED, adUnitId, fullScreenContentError)
                     if (autoReload) load()
-                    onDismiss()
+                    onComplete()
                 }
             }
 
@@ -400,7 +400,7 @@ class RewardedAdHelper(private val adUnitId: String) {
                 // The user left during the interlude — keep the ad cached for the next trigger.
                 dismissOverlay()
                 abortShow()
-                onDismiss()
+                onComplete()
                 return@postDelayed
             }
             ad.show(activity, rewardListener)
@@ -498,6 +498,6 @@ object RewardedAds {
         adUnitId: String,
         onReward: (RewardItem) -> Unit,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
-    ) = get(adUnitId).loadAndShow(activity, onReward, timeoutMs, onDismiss)
+        onComplete: () -> Unit = {},
+    ) = get(adUnitId).loadAndShow(activity, onReward, timeoutMs, onComplete)
 }

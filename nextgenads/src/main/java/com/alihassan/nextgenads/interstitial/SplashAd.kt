@@ -131,7 +131,7 @@ object SplashAd {
                     return@postDelayed
                 }
                 // show() calls onComplete via its dismiss callback; if it can't show, proceed now.
-                if (!helper.show(activity, onDismiss = { finishOnce() })) finishOnce()
+                if (!helper.show(activity, onComplete = { finishOnce() })) finishOnce()
             }, wait)
         }
     }

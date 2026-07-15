@@ -22,7 +22,7 @@ enum class AdFormat {
  * Register one (or more) with [com.alihassan.nextgenads.NextGenAds.registerEventListener] — typically
  * from `Application.onCreate` — to drive analytics, ROAS/revenue tracking, or your own logging
  * without having to thread callbacks through every `load`/`show` call site. The per-call callbacks
- * (`onResult`, `onDismiss`, `onReward`, …) still fire as before; these events are additive.
+ * (`onResult`, `onComplete`, `onReward`, …) still fire as before; these events are additive.
  *
  * Every method has a no-op default, so implement only the ones you need. All callbacks are
  * delivered on the **main thread**, and an exception thrown by one listener never prevents the

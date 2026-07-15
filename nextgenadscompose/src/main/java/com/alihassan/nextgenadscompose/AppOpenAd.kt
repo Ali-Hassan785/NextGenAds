@@ -33,7 +33,7 @@ class AppOpenAdController internal constructor(
 
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind [coverStyle]'s cover) and
-     * shows it as soon as it lands. [onDismiss] fires after dismissal, on failure, or on a
+     * shows it as soon as it lands. [onComplete] fires after dismissal, on failure, or on a
      * [timeoutMs] timeout so the caller can proceed into the app.
      *
      * [coverStyle] defaults to the branded [AppOpenCoverStyle.WELCOME] "Welcome back" cover; pass
@@ -42,10 +42,10 @@ class AppOpenAdController internal constructor(
     fun loadAndShow(
         timeoutMs: Long = 8_000L,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.loadAndShow(activity, timeoutMs, coverStyle = coverStyle, onDismiss = onDismiss)
+        val activity = activityProvider() ?: return onComplete()
+        helper.loadAndShow(activity, timeoutMs, coverStyle = coverStyle, onComplete = onComplete)
     }
 }
 

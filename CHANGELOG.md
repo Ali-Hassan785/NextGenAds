@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-15
+
+### Changed — source-breaking for named arguments
+- **`onDismiss` is now `onComplete`** across every full-screen format — `Interstitials` / `SplashAd`,
+  `RewardedAds`, `RewardedInterstitials`, `AppOpenAds`, and the matching Compose wrappers
+  (`InterstitialAd`, `RewardedAd`, `RewardedInterstitialAd`, `AppOpenAd`).
+
+  The old name described only one of the callback's three cases: it also fires on failure/timeout and
+  synchronously when ads are disabled — i.e. when nothing was ever dismissed. `onComplete` is the word
+  this library already uses for "flow finished, navigate on" (`SplashAdGate`, `NextGenAds.initialize`),
+  so the vocabulary is now consistent.
+
+  **Trailing-lambda callers are unaffected** — the common form keeps compiling untouched:
+
+  ```kotlin
+  Interstitials.get(UNIT).show(this) { goToNextScreen() }          // unchanged
+  ```
+
+  **Named-argument callers must rename:**
+
+  ```kotlin
+  Interstitials.loadAndShow(this, UNIT, 5_000L, onDismiss = { next() })   // before
+  Interstitials.loadAndShow(this, UNIT, 5_000L, onComplete = { next() })  // after
+  ```
+
+  Java callers are unaffected (parameter names aren't part of a positional call's ABI). Unrelated
+  names are deliberately untouched: `ConsentManager`'s `onDismissed` (UMP form dismissal) and the
+  `AdEventListener.onAdDismissed` **event**, which really does mean the ad was dismissed.
+
 ## [1.3.0] - 2026-07-15
 
 ### Added
@@ -195,6 +224,7 @@ Initial release.
 - `com.google.android.ump:user-messaging-platform:4.0.0`
 - `com.facebook.shimmer:shimmer:0.5.0`
 
+[1.4.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.4.0
 [1.3.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.3.0
 [1.2.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.2.0
 [1.1.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.1.0

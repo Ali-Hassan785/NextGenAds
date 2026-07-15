@@ -137,7 +137,7 @@ object SplashAppOpenAd {
                 // dismiss callback; if it can't show, proceed now.
                 val shown = helper.show(
                     activity,
-                    onDismiss = { finishOnce() },
+                    onComplete = { finishOnce() },
                     coverStyle = AppOpenCoverStyle.LOADING,
                 )
                 if (!shown) finishOnce()

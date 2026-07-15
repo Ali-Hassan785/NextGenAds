@@ -12,7 +12,7 @@ import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 /**
  * Compose controller for a single rewarded-interstitial ad unit. Obtain one with
  * [rememberRewardedInterstitialAd]. Like a rewarded ad, [onReward] fires only on a completed view;
- * [onDismiss] always fires when the ad closes.
+ * [onComplete] always fires when the ad closes.
  */
 @Stable
 class RewardedInterstitialAdController internal constructor(
@@ -29,20 +29,20 @@ class RewardedInterstitialAdController internal constructor(
         helper.load(remoteEnabled = remoteEnabled)
     }
 
-    /** Shows a preloaded ad if ready; otherwise invokes [onDismiss] immediately. */
-    fun show(onReward: (RewardItem) -> Unit, onDismiss: () -> Unit = {}) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.show(activity, onReward, onDismiss)
+    /** Shows a preloaded ad if ready; otherwise invokes [onComplete] immediately. */
+    fun show(onReward: (RewardItem) -> Unit, onComplete: () -> Unit = {}) {
+        val activity = activityProvider() ?: return onComplete()
+        helper.show(activity, onReward, onComplete)
     }
 
     /** Shows the cached ad instantly, or fetches one on demand (behind a loading cover) and shows it. */
     fun loadAndShow(
         onReward: (RewardItem) -> Unit,
         timeoutMs: Long = 10_000L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.loadAndShow(activity, onReward, timeoutMs, onDismiss)
+        val activity = activityProvider() ?: return onComplete()
+        helper.loadAndShow(activity, onReward, timeoutMs, onComplete)
     }
 }
 

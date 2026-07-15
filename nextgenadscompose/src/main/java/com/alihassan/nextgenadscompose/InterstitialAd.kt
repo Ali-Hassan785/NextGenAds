@@ -29,21 +29,21 @@ class InterstitialAdController internal constructor(
     }
 
     /**
-     * Shows a preloaded ad if ready; otherwise invokes [onDismiss] immediately so the caller can
+     * Shows a preloaded ad if ready; otherwise invokes [onComplete] immediately so the caller can
      * proceed. Use [loadAndShow] to fetch on demand behind a loading cover.
      */
-    fun show(onDismiss: () -> Unit = {}) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.show(activity, onDismiss)
+    fun show(onComplete: () -> Unit = {}) {
+        val activity = activityProvider() ?: return onComplete()
+        helper.show(activity, onComplete)
     }
 
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind a loading cover) and shows it
-     * as soon as it lands. [onDismiss] fires after dismissal, on failure, or on [timeoutMs] timeout.
+     * as soon as it lands. [onComplete] fires after dismissal, on failure, or on [timeoutMs] timeout.
      */
-    fun loadAndShow(timeoutMs: Long = 8_000L, onDismiss: () -> Unit = {}) {
-        val activity = activityProvider() ?: return onDismiss()
-        helper.loadAndShow(activity, timeoutMs, onDismiss)
+    fun loadAndShow(timeoutMs: Long = 8_000L, onComplete: () -> Unit = {}) {
+        val activity = activityProvider() ?: return onComplete()
+        helper.loadAndShow(activity, timeoutMs, onComplete)
     }
 
     /** Counter-gated show: shows on every [nth]-th call. See [Interstitials.showEvery]. */
@@ -51,10 +51,10 @@ class InterstitialAdController internal constructor(
         nth: Int,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ): Boolean {
-        val activity = activityProvider() ?: run { onDismiss(); return false }
-        return helper.showEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
+        val activity = activityProvider() ?: run { onComplete(); return false }
+        return helper.showEvery(activity, nth, forceLoad, timeoutMs, onComplete)
     }
 
     /** Shows on the first call, then every [nth]-th call after. See [Interstitials.showFirstThenEvery]. */
@@ -62,10 +62,10 @@ class InterstitialAdController internal constructor(
         nth: Int,
         forceLoad: Boolean = false,
         timeoutMs: Long = 0L,
-        onDismiss: () -> Unit = {},
+        onComplete: () -> Unit = {},
     ): Boolean {
-        val activity = activityProvider() ?: run { onDismiss(); return false }
-        return helper.showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onDismiss)
+        val activity = activityProvider() ?: run { onComplete(); return false }
+        return helper.showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onComplete)
     }
 }
 
