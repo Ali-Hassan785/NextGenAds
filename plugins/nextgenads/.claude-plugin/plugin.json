@@ -1,0 +1,18 @@
+{
+  "name": "nextgenads",
+  "description": "Integrate the NextGenAds Android ad library — setup, UMP consent, every ad format, Compose, diagnostics.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Ali Hassan"
+  },
+  "homepage": "https://github.com/Ali-Hassan785/NextGenAds",
+  "repository": "https://github.com/Ali-Hassan785/NextGenAds",
+  "license": "MIT",
+  "keywords": [
+    "android",
+    "admob",
+    "ads",
+    "nextgenads",
+    "kotlin"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "nextgenads",
+  "owner": {
+    "name": "Ali Hassan"
+  },
+  "description": "Claude Code plugins for the NextGenAds Android ad library.",
+  "plugins": [
+    {
+      "name": "nextgenads",
+      "source": "./plugins/nextgenads"
+    }
+  ]
+}
