@@ -4,229 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-## [1.4.0] - 2026-07-15
-
-### Changed — source-breaking for named arguments
-- **`onDismiss` is now `onComplete`** across every full-screen format — `Interstitials` / `SplashAd`,
-  `RewardedAds`, `RewardedInterstitials`, `AppOpenAds`, and the matching Compose wrappers
-  (`InterstitialAd`, `RewardedAd`, `RewardedInterstitialAd`, `AppOpenAd`).
-
-  The old name described only one of the callback's three cases: it also fires on failure/timeout and
-  synchronously when ads are disabled — i.e. when nothing was ever dismissed. `onComplete` is the word
-  this library already uses for "flow finished, navigate on" (`SplashAdGate`, `NextGenAds.initialize`),
-  so the vocabulary is now consistent.
-
-  **Trailing-lambda callers are unaffected** — the common form keeps compiling untouched:
-
-  ```kotlin
-  Interstitials.get(UNIT).show(this) { goToNextScreen() }          // unchanged
-  ```
-
-  **Named-argument callers must rename:**
-
-  ```kotlin
-  Interstitials.loadAndShow(this, UNIT, 5_000L, onDismiss = { next() })   // before
-  Interstitials.loadAndShow(this, UNIT, 5_000L, onComplete = { next() })  // after
-  ```
-
-  Java callers are unaffected (parameter names aren't part of a positional call's ABI). Unrelated
-  names are deliberately untouched: `ConsentManager`'s `onDismissed` (UMP form dismissal) and the
-  `AdEventListener.onAdDismissed` **event**, which really does mean the ad was dismissed.
-
-## [1.3.0] - 2026-07-15
-
-### Added
-- **`Interstitials.preload` takes a load callback** — the registry convenience now forwards to the
-  `onResult` that `InterstitialAdHelper.load` already accepted, so callers can react to a preload
-  instead of polling `isReady`:
-
-  ```kotlin
-  Interstitials.preload(INTERSTITIAL_UNIT) { loaded ->
-      if (loaded) enableContinueButton()
-  }
-  ```
-
-  Delivered on the main thread. `true` once the ad is cached — immediately, if one already is;
-  `false` if the load was refused (`remoteEnabled` off, premium, kill-switch) or failed **after the
-  retry budget is spent**, so a `false` means "gave up", not "first attempt missed". The parameter is
-  optional and last, so existing Kotlin and compiled Java callers are unaffected (`@JvmOverloads`
-  still emits `preload(String)` and `preload(String, boolean)`).
-
-## [1.2.0] - 2026-07-15
-
-### Added
-- **`nextgenads-compose` is now published** — the Jetpack Compose wrapper is distributed as its own
-  artifact instead of being local-module-only:
-
-  ```kotlin
-  implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.2.0")
-  ```
-
-  It exposes `:nextgenads` transitively (`api`), so Compose apps add just this one line. `jitpack.yml`
-  now publishes both modules — previously it built only `:nextgenads`, so the
-  `nextgenads-compose:1.0.0` coordinate the README advertised was never actually resolvable.
-
-### Changed — action needed when upgrading (JitPack)
-- **The JitPack group is now `com.github.Ali-Hassan785.NextGenAds`** (JitPack's multi-module group)
-  because this repo now publishes two artifacts:
-
-  ```kotlin
-  // before (≤ 1.1.0)
-  implementation("com.github.Ali-Hassan785:nextgenads:1.1.0")
-  // now
-  implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.2.0")
-  ```
-
-  The flat `com.github.Ali-Hassan785:nextgenads:1.2.0` still resolves, but on a multi-module repo
-  JitPack turns it into an **aggregate** POM that depends on *both* modules — so an XML-only app that
-  just bumps the version silently gains the Compose wrapper and all of Jetpack Compose. Switch to the
-  module coordinate above to keep pulling the core library alone.
-  This affects the JitPack coordinate only; GitHub Packages continues to serve the published
-  `com.github.Ali-Hassan785` group.
-
-### Fixed
-- **`nextgenads-compose` now resolves for consumers** — the Compose BOM was declared with
-  `implementation`, so it was published into the runtime variant only. Consumers' *compile* classpath
-  therefore saw `androidx.compose.runtime`, `androidx.compose.ui` and `androidx.compose.foundation`
-  with no version and failed to resolve (`Could not find androidx.compose.foundation:foundation:`).
-  The BOM is now an `api` platform dependency, so it reaches the compile classpath that the
-  versionless Compose artifacts depend on.
-
-### Changed
-- Both modules now share a version, so `nextgenads` and `nextgenads-compose` are always released in
-  lockstep. `nextgenads` 1.2.0 is identical in code to 1.1.0.
-
-## [1.1.0] - 2026-07-15
-
-### Added
-- **Video ad audio** — `NextGenAds.setAppVolume(0f..1f)` and `NextGenAds.setAppMuted(true)` mirror
-  your app's own volume / mute state onto video and rewarded creatives, so an ad never blasts over
-  (or clashes with) your app's audio. Both are remembered and re-applied once the SDK is initialized,
-  so they are safe to call before `initialize()` completes; out-of-range volumes are clamped.
-- **Ad Inspector** — `NextGenAds.openAdInspector { error -> … }` opens the on-device Ad Inspector to
-  debug live ad requests and mediation. Requires a registered test device (see `initialize`'s
-  `testDeviceIds`); `onClosed` receives `null` on success or a short `code: message` string.
-- **Mediation adapter status** — `NextGenAds.initializationStatus` exposes each adapter's
-  `initializationState` / `description` / `latency` after init, so a `NOT_READY` adapter silently
-  forfeiting that network's fill is visible. A one-line adapter summary is also logged on init under
-  the `NextGenAds` tag when `loggingEnabled`.
-
-### Fixed
-- **Splash flows no longer strand the user** — if the app was backgrounded during the splash,
-  `SplashAd` / `SplashAppOpenAd` correctly declined to show the ad but never fired `onComplete`,
-  leaving the user stuck on the splash on their return. Completion is now deferred to the next
-  foreground and fires exactly once; the loaded ad stays cached for later.
-- **`NativeTemplateView` honors the per-format NATIVE toggle** — `setFormatEnabled(AdFormat.NATIVE,
-  false)` now hides an on-screen native template. Previously only a full premium purge cleared it.
-
-## [1.0.2] - 2026-07-08
-
-### Added
-- **Banner sizes** — `BannerSize` (`ADAPTIVE`, `ADAPTIVE_INLINE`, `BANNER` 320×50, `LARGE_BANNER`
-  320×100, `FULL_BANNER` 468×60, `LEADERBOARD` 728×90, `MEDIUM_RECTANGLE` 300×250) can be passed to
-  `BannerAdHelper.preload` / `loadAdaptiveBanner`, to `BannerNativeView.load(bannerSize = …)`, or via
-  the `app:ngad_banner_size` XML attribute. The preload cache is keyed by ad unit **and** size, so a
-  banner warmed at one size is never attached to a request for another. Fixed sizes are now centered
-  in their container, and the loading shimmer matches a fixed size's exact footprint.
-
-### Added (earlier, since 1.0.0)
-- **Runtime premium purge** — setting `NextGenAds.premium = true` / `enabled = false` (or calling
-  `NextGenAds.refreshPremiumState()` for a dynamic `premiumProvider`) now immediately drops every
-  format's cached ad and hides any banner/native already on screen, via new `clearAll()` methods on
-  each registry, `NextGenAds.clearAllAds()`, and a `PremiumAware` slot registry that
-  `BannerNativeView` / `NativeTemplateView` / populated banner containers join. No ad is requested
-  while premium (unchanged). Demo gains a Premium toggle.
-- **Splash interstitial** — `SplashAd.show(activity, adUnitId, minDelayMs, timeoutMs, onComplete)`
-  drives a splash-screen interstitial: loads while the splash is up, shows it only after a minimum
-  delay (branding always visible) and never past a timeout (a slow/failed load can't trap the user),
-  then fires `onComplete` once so the caller navigates on. Demo `SplashActivity` shows the pattern.
-- **Collapsible banners** — `BannerAdHelper.loadAdaptiveBanner(..., collapsible = BannerCollapsible.BOTTOM)`
-  (or `TOP`) requests a collapsible banner via the SDK's `"collapsible"` extra. Collapsible requests
-  always load fresh (the preload cache holds standard banners).
-- **Creative native templates** — `NativeTemplate.HERO`, `.FEED`, `.SPOTLIGHT` join the six built-ins
-  (also selectable via `app:ngad_template="hero"` etc.). They ship no shimmer XML — one is
-  auto-generated from the layout — and use the library's themeable `ngad_*` tokens.
-- **Ad events** — `AdEventListener` + `AdFormat` with `NextGenAds.registerEventListener` /
-  `unregisterEventListener`. A single app-wide hook for every ad lifecycle event across all formats:
-  load, failed-to-load, show, dismiss, failed-to-show, impression, click, **paid-revenue**
-  (`onAdPaid` / `AdValue`, for ROAS / analytics), and reward. Callbacks are delivered on the main
-  thread and isolated so one listener's exception can't suppress the others. Banner and native ads
-  now attach an event callback so their impression/click/paid events are surfaced too.
-- `AppOpenAds` / `AppOpenAdHelper` — app-open ads with preloading, exponential-backoff retries,
-  frequency capping, and 4-hour expiry handling (stale ads are refetched, never shown).
-- `AppOpenAdManager` — opt-in manager that auto-shows an app-open ad when the app returns to the
-  foreground, driven by `ProcessLifecycleOwner`.
-- `Interstitials.showEvery` / `InterstitialAdHelper.showEvery` + `resetTriggerCount` — counter-gated
-  interstitials that show on every Nth call.
-- **Custom native templates** — `NativeTemplateView.setCustomTemplate(layout, shimmer, autoShimmer, binder)`
-  plus `app:ngad_customLayout` / `app:ngad_customShimmer` XML attributes let callers supply their own
-  native layout instead of the six built-ins. Layouts using the `ngad_*` asset IDs bind and track
-  automatically; an optional `binder` gives full control for arbitrary-ID layouts. The cache,
-  retry/backoff, expiry and error-collapse pipeline drives custom layouts unchanged.
-- **Auto-generated shimmer** — `ShimmerSkeleton.fromLayout(context, layout)` builds a shimmer
-  placeholder from any ad layout, so a custom template needs no hand-designed shimmer. When
-  `app:ngad_customShimmer` / the `shimmer` argument is omitted, `NativeTemplateView` auto-generates
-  one (each content view becomes a rounded grey block); pass `autoShimmer = false` to opt out. Leaf
-  views — including the surface-backed `MediaView` — are replaced with plain blocks so the
-  placeholder hides correctly and doesn't duplicate the ad view's IDs.
-- **`NativeTemplateView.mediaScaleType`** — controls how native media fills its `MediaView`
-  (default `CENTER_CROP`). The media now fills the slot regardless of aspect ratio instead of
-  letterboxing and exposing the view's background as grey bars; set `FIT_CENTER` to show the whole
-  creative.
-
-### Fixed
-- Native ads no longer shimmer forever when a load fails — the slot now collapses (`showError`).
-- `BannerNativeView` now destroys its bound native ad in `hide()` and when switching to a banner,
-  preventing a `NativeAd` leak.
-- `AppOpenAdManager` holds the current `Activity` via a `WeakReference` (fixes a `StaticFieldLeak`).
-- Banner `preload` builds its `AdView` only after the SDK is initialized.
-- **Consumer R8 keep rules** — the shipped `consumer-rules.keep` (previously empty) now keeps the
-  XML-inflated `NativeAdView` / `MediaView` and the library's `BannerNativeView` /
-  `NativeTemplateView`, so an R8-minified host app can't strip them and break native inflation in
-  release (banners, created in code, were unaffected).
-
-### Changed
-- Ad **load failures now log the reason centrally** — `code` / `message` / `responseInfo` for every
-  format (e.g. `code=NO_FILL`), under tag `NextGenAds`, making no-fill vs invalid-request easy to tell.
-- `app:ngad_template` is now resolved **by name** — the attribute is a plain string matched against
-  the `NativeTemplate` enum names (`NativeTemplate.fromName`), replacing the brittle integer-index
-  `fromAttr`. Existing XML using names (`app:ngad_template="medium"`) is unaffected.
-- Load/preload requests issued before `NextGenAds.initialize()` completes are now queued (via the
-  new `NextGenAds.whenInitialized`) and replayed once the SDK is ready, instead of failing against
-  an uninitialized SDK and wasting the retry budget. Affects every ad format.
-
-### Dependencies
-- Added `androidx.lifecycle:lifecycle-process:2.6.2` (for `AppOpenAdManager`).
-
-## [1.0.0]
+## [1.0.0] - 2026-07-16
 
 Initial release.
 
-### Added
-- `NextGenAds` entry point: background-thread initialization, `enabled` / `premium` /
-  `premiumProvider` gating, and `canShowAds()`.
-- `ConsentManager` — User Messaging Platform (UMP) GDPR flow with test-device support.
-- `BannerAdHelper` — anchored adaptive banners with preloading, per-unit caching, and shimmer.
-- `BannerNativeView` — drop-in view that renders a banner or native ad from XML.
-- `NativeAdHelper` + `NativeTemplateView` — native loading with per-unit cache and five premium
-  templates: `SMALL`, `MEDIUM`, `LARGE`, `BANNER`, `MEDIA_LEFT`.
-- `Interstitials` — preload, frequency capping, and exponential-backoff retries.
-- `RewardedAds` and `RewardedInterstitials` — preload + show with reward callbacks.
-- Premium-themed native templates: rounded clipped media, ripple CTA, "Ad" badge, Roboto typography,
-  and an app-overridable color palette.
-- All SDK callbacks marshalled to the main thread.
-- `maven-publish` + JitPack configuration for distribution.
+### Ad formats
+- **Banner** — adaptive, inline-adaptive and fixed sizes, plus collapsible banners, via
+  `BannerAdHelper` and the `BannerNativeView` drop-in view. Adaptive banners wait for their
+  container's first layout so they size to the real container width instead of the full screen.
+- **Native** — six built-in templates plus custom-layout templates, each with an auto-generated
+  shimmer placeholder (`NativeAdHelper`, `NativeTemplateView`, `NativeAdPreloader`).
+- **Interstitial** — preload/cache, `loadAndShow`, and counter-gated `showEvery` /
+  `showFirstThenEvery` (`Interstitials`).
+- **Rewarded** and **rewarded-interstitial** (`RewardedAds`, `RewardedInterstitials`).
+- **App-open** — an auto-show-on-foreground-return manager plus manual control (`AppOpenAds`,
+  `AppOpenAdManager`).
+- **Splash gate** — shows an interstitial on a cold start and an app-open on a warm start over your
+  splash, then calls back once (`SplashAdGate`).
 
-### Dependencies
-- `com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.2.1`
-- `com.google.android.ump:user-messaging-platform:4.0.0`
-- `com.facebook.shimmer:shimmer:0.5.0`
+### Setup & configuration
+- **`NextGenAdsBootstrap`** — optional one-call setup: gather UMP consent → initialize (correct
+  order, since a pre-consent request is refused), plus connectivity recovery and the app-open
+  manager. App-agnostic and Java-friendly.
+- **`NextGenAds.initialize`** reads the AdMob App ID from the manifest
+  `com.google.android.gms.ads.APPLICATION_ID` meta-data (or an explicit `appId` overload), with a
+  clear warning when the id is malformed (e.g. an ad-unit id passed by mistake) and an actionable
+  error when the manifest entry is missing.
+- **`NextGenAdsConfig`** — app-wide default options (splash timers, on-demand show timeouts, retry
+  budget, per-unit frequency cap, and the request circuit breaker), read live.
+- **Consent** via `ConsentManager` (UMP). Every ad request is gated on consent and deferred until
+  initialization completes.
 
-[1.4.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.4.0
-[1.3.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.3.0
-[1.2.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.2.0
-[1.1.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.1.0
-[1.0.2]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.2
-[1.0.0]: https://github.com/Ali-Hassan785/NextGenAds/releases/tag/1.0.0
+### Extras
+- **Jetpack Compose** wrappers in the separate `nextgenads-compose` artifact.
+- **Premium / ad-free** support — `NextGenAds.premium`, `premiumProvider`, `canShowAds`,
+  `clearAllAds` (runtime purge of cached and shown ads).
+- **Ad events & metrics** — an app-wide `AdEventListener` stream and live fill/show-rate tracking
+  (`ShowRateTracker`).
+- **Google Play In-App Update and In-App Review** helpers.

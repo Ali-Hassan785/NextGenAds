@@ -9,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.events.AdFormat
 
 /**
@@ -37,11 +38,14 @@ object SplashAd {
     /**
      * @param adUnitId interstitial unit to load for the splash.
      * @param minDelayMs minimum time (ms) to keep the splash visible before the ad can show.
-     * @param timeoutMs maximum time (ms) to wait for the ad; coerced to be ≥ [minDelayMs]. `0`
-     *   disables the timeout (bounded only by the load's own retry budget).
-     * @param retryOnFailure when `false` (default) the splash load is a **single** attempt — a failed
-     *   load proceeds at once and never fires retry requests. Set `true` to keep the helper's
-     *   retry/backoff so the load keeps trying (warming the cache for a later screen).
+     *   Defaults to [NextGenAdsConfig.splashMinDelayMs].
+     * @param timeoutMs maximum time (ms) to wait for the ad; coerced to be ≥ [minDelayMs]. Defaults
+     *   to [NextGenAdsConfig.splashTimeoutMs]; `0` disables the timeout (bounded only by the load's
+     *   own retry budget).
+     * @param retryOnFailure when `false` (the default, from [NextGenAdsConfig.splashRetryOnFailure])
+     *   the splash load is a **single** attempt — a failed load proceeds at once and never fires
+     *   retry requests. Set `true` to keep the helper's retry/backoff so the load keeps trying
+     *   (warming the cache for a later screen).
      * @param onComplete run once, on the main thread, when the splash should be dismissed.
      */
     @JvmStatic
@@ -49,9 +53,9 @@ object SplashAd {
     fun show(
         activity: Activity,
         adUnitId: String,
-        minDelayMs: Long = 1_000L,
-        timeoutMs: Long = 8_000L,
-        retryOnFailure: Boolean = false,
+        minDelayMs: Long = NextGenAdsConfig.splashMinDelayMs,
+        timeoutMs: Long = NextGenAdsConfig.splashTimeoutMs,
+        retryOnFailure: Boolean = NextGenAdsConfig.splashRetryOnFailure,
         onComplete: () -> Unit,
     ) = NextGenAds.runOnMain {
         val start = SystemClock.elapsedRealtime()
@@ -80,7 +84,9 @@ object SplashAd {
         // Fail-fast splash: cap the load to a single attempt so a failed splash load doesn't fire
         // retry requests (during or after the splash). Restored the moment the load resolves — safe
         // because the helper runs only one in-flight load at a time, so nothing else races on it.
-        val savedMaxRetries = helper.maxRetries
+        // The raw override is saved (not the effective value) so a unit that follows
+        // NextGenAdsConfig.maxRetries keeps following it once the splash is done.
+        val savedMaxRetries = helper.maxRetriesOverride
         if (!retryOnFailure) helper.maxRetries = 0
 
         // Hard ceiling on the whole splash: past this we leave no matter what. timeoutMs > minDelayMs
@@ -93,7 +99,7 @@ object SplashAd {
         if (cappedTimeout > 0) handler.postDelayed(timeoutRunnable, cappedTimeout)
 
         helper.load { loaded ->
-            if (!retryOnFailure) helper.maxRetries = savedMaxRetries // restore before anything else
+            if (!retryOnFailure) helper.maxRetriesOverride = savedMaxRetries // restore before anything else
             if (finished) return@load // already timed out / proceeded
             handler.removeCallbacks(timeoutRunnable)
             if (!loaded) {

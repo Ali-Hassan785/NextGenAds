@@ -18,7 +18,9 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.alihassan.nextgenads.ConfigDefault
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.appopen.AppOpenAd
@@ -73,28 +75,49 @@ class AppOpenAdHelper(private val adUnitId: String) {
     // gate's loadAndShow waiting forever).
     private val pending = mutableListOf<(Boolean) -> Unit>()
 
-    /** Maximum number of automatic reload attempts after a failed load. */
-    var maxRetries = 3
+    private val maxRetriesDefault = ConfigDefault { NextGenAdsConfig.maxRetries }
+
+    /**
+     * Maximum number of automatic reload attempts after a failed load. Defaults to
+     * [NextGenAdsConfig.maxRetries]; assigning it pins the value for this unit.
+     */
+    var maxRetries: Int by maxRetriesDefault
+
+    /**
+     * The raw [maxRetries] override — `null` while this helper still follows [NextGenAdsConfig].
+     * [SplashAppOpenAd] suppresses retries for the duration of a splash load and restores through
+     * this, so a unit that was following the config keeps following it afterwards instead of being
+     * pinned to whatever the config read at splash time.
+     */
+    internal var maxRetriesOverride: Int?
+        get() = maxRetriesDefault.override
+        set(value) {
+            maxRetriesDefault.override = value
+        }
 
     /**
      * When `true`, the helper automatically requests the next ad after one is shown/dismissed (and
-     * when [show] finds none ready). Default `false` so a single [show] / [loadAndShow] issues a
-     * **single** request — warm the next one explicitly via [load] / [AppOpenAds.preload]. This
-     * prevents the "requested twice per show" behaviour. [AppOpenAdManager] re-warms itself via the
-     * dismiss callback, so it doesn't need this on.
+     * when [show] finds none ready). Defaults to [NextGenAdsConfig.autoReload] (`false`), so a single
+     * [show] / [loadAndShow] issues a **single** request — warm the next one explicitly via [load] /
+     * [AppOpenAds.preload]. This prevents the "requested twice per show" behaviour. [AppOpenAdManager]
+     * re-warms itself via the dismiss callback, so it doesn't need this on.
      */
-    var autoReload = false
+    var autoReload: Boolean by ConfigDefault { NextGenAdsConfig.autoReload }
 
-    /** Minimum gap (ms) between two app-open ads. `0` disables frequency capping. */
-    var minIntervalMs = 0L
+    /**
+     * Minimum gap (ms) between two app-open ads. `0` disables frequency capping. Defaults to
+     * [NextGenAdsConfig.minIntervalMs].
+     */
+    var minIntervalMs: Long by ConfigDefault { NextGenAdsConfig.minIntervalMs }
 
     /**
      * Optional artificial dwell (ms) on a "Showing ad…" cover before an already-available ad opens,
-     * so it doesn't pop in abruptly. Defaults to `0` — a ready ad shows **instantly** (smoothest).
-     * This is separate from the "Loading ad…" cover [loadAndShow] shows while genuinely fetching an
-     * ad, which always appears (it hides real network latency, not an artificial delay).
+     * so it doesn't pop in abruptly. Defaults to [NextGenAdsConfig.loadingOverlayMs] (`0`) — a ready
+     * ad shows **instantly** (smoothest). This is separate from the "Loading ad…" cover [loadAndShow]
+     * shows while genuinely fetching an ad, which always appears (it hides real network latency, not
+     * an artificial delay).
      */
-    var loadingOverlayMs = 0L
+    var loadingOverlayMs: Long by ConfigDefault { NextGenAdsConfig.loadingOverlayMs }
 
     /**
      * Title on the "Welcome back" cover shown during the app-open flow. Set from the host app to
@@ -213,7 +236,8 @@ class AppOpenAdHelper(private val adUnitId: String) {
      *
      * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onComplete] fires so the caller
      * can proceed into the app, and the in-flight load is left to finish for the next opportunity
-     * (a late ad is never shown over app content). `0` waits indefinitely for the load result.
+     * (a late ad is never shown over app content). Defaults to [NextGenAdsConfig.forceShowTimeoutMs];
+     * `0` waits indefinitely for the load result.
      *
      * [onComplete] is invoked exactly once — after the ad is dismissed, on load failure, on timeout,
      * or synchronously when ads are disabled / one is already showing.
@@ -228,7 +252,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
     @JvmOverloads
     fun loadAndShow(
         activity: Activity,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
         canShow: () -> Boolean = { true },
         onComplete: () -> Unit = {},
@@ -556,7 +580,7 @@ object AppOpenAds {
     fun loadAndShow(
         activity: Activity,
         adUnitId: String,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ) = get(adUnitId).loadAndShow(activity, timeoutMs, onComplete = onComplete)
 }
@@ -659,9 +683,11 @@ class AppOpenAdManager private constructor(
      * would pop a full-screen ad at an unexpected moment — but stays cached so the next return
      * shows it instantly. `0` never shows a late-loading ad: the on-return request only warms the
      * cache for the next return.
+     *
+     * Defaults to [NextGenAdsConfig.appOpenLoadTimeoutMs]; assigning it pins the value for this
+     * manager.
      */
-    @Volatile
-    var loadTimeoutMs = 5_000L
+    var loadTimeoutMs: Long by ConfigDefault { NextGenAdsConfig.appOpenLoadTimeoutMs }
 
     /**
      * Bumped every foreground/background transition; a pending show-on-load from a previous

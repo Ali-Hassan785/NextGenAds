@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.rewarded.RewardedAds
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 
@@ -41,11 +42,11 @@ class RewardedAdController internal constructor(
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind a loading cover) and shows it.
      * [onReward] fires only on a completed view; [onComplete] always fires when the ad closes or on
-     * a [timeoutMs] timeout.
+     * a [timeoutMs] timeout, which defaults to [NextGenAdsConfig.rewardedForceShowTimeoutMs].
      */
     fun loadAndShow(
         onReward: (RewardItem) -> Unit,
-        timeoutMs: Long = 10_000L,
+        timeoutMs: Long = NextGenAdsConfig.rewardedForceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ) {
         val activity = activityProvider() ?: return onComplete()

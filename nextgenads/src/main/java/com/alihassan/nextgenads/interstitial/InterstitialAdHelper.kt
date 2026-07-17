@@ -12,7 +12,9 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.alihassan.nextgenads.ConfigDefault
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
@@ -48,35 +50,58 @@ class InterstitialAdHelper(private val adUnitId: String) {
     // instead of every caller-after-the-first being silently dropped.
     private val pending = mutableListOf<(Boolean) -> Unit>()
 
-    /** Maximum number of automatic reload attempts after a failed load. */
-    var maxRetries = 3
+    private val maxRetriesDefault = ConfigDefault { NextGenAdsConfig.maxRetries }
+
+    /**
+     * Maximum number of automatic reload attempts after a failed load. Defaults to
+     * [NextGenAdsConfig.maxRetries]; assigning it pins the value for this unit.
+     */
+    var maxRetries: Int by maxRetriesDefault
+
+    /**
+     * The raw [maxRetries] override — `null` while this helper still follows [NextGenAdsConfig].
+     * [SplashAd] suppresses retries for the duration of a splash load and restores through this, so
+     * a unit that was following the config keeps following it afterwards instead of being pinned to
+     * whatever the config read at splash time.
+     */
+    internal var maxRetriesOverride: Int?
+        get() = maxRetriesDefault.override
+        set(value) {
+            maxRetriesDefault.override = value
+        }
 
     /**
      * How long (ms) a loaded interstitial stays valid in the cache. AdMob interstitials expire
      * roughly an hour after loading; showing a stale ad fails with an "ad expired" error and the
      * show is silently lost. The helper drops (and, on the next [load], replaces) any cached ad
-     * older than this, so a show request never burns on a stale ad.
+     * older than this, so a show request never burns on a stale ad. Defaults to
+     * [NextGenAdsConfig.adValidityMs].
      */
-    var adValidityMs = 55 * 60 * 1000L
+    var adValidityMs: Long by ConfigDefault { NextGenAdsConfig.adValidityMs }
 
     /**
      * When `true`, the helper automatically requests the next ad after one is shown/dismissed (and
-     * when [show] finds none ready). Default `false` so a preloaded ad results in a **single**
-     * request — warm the next one explicitly via [load] / [Interstitials.preload], like the native
-     * preloader. This prevents the "requested twice per show" behaviour.
+     * when [show] finds none ready). Defaults to [NextGenAdsConfig.autoReload] (`false`), so a
+     * preloaded ad results in a **single** request — warm the next one explicitly via [load] /
+     * [Interstitials.preload], like the native preloader. This prevents the "requested twice per
+     * show" behaviour.
      */
-    var autoReload = false
+    var autoReload: Boolean by ConfigDefault { NextGenAdsConfig.autoReload }
 
-    /** Minimum gap (ms) between two interstitials. `0` disables frequency capping. */
-    var minIntervalMs = 0L
+    /**
+     * Minimum gap (ms) between two interstitials. `0` disables frequency capping. Defaults to
+     * [NextGenAdsConfig.minIntervalMs].
+     */
+    var minIntervalMs: Long by ConfigDefault { NextGenAdsConfig.minIntervalMs }
 
     /**
      * Optional artificial dwell (ms) on a "Showing ad…" cover before an already-available ad opens,
-     * so it doesn't pop in abruptly. Defaults to `0` — a ready ad shows **instantly** (smoothest).
-     * This is separate from the "Loading ad…" cover [loadAndShow] shows while genuinely fetching an
-     * ad, which always appears (it hides real network latency, not an artificial delay).
+     * so it doesn't pop in abruptly. Defaults to [NextGenAdsConfig.loadingOverlayMs] (`0`) — a ready
+     * ad shows **instantly** (smoothest). This is separate from the "Loading ad…" cover [loadAndShow]
+     * shows while genuinely fetching an ad, which always appears (it hides real network latency, not
+     * an artificial delay).
      */
-    var loadingOverlayMs = 0L
+    var loadingOverlayMs: Long by ConfigDefault { NextGenAdsConfig.loadingOverlayMs }
 
     /**
      * Minimum time (ms) the "Loading ad…" cover stays on screen during a genuine on-demand fetch
@@ -84,9 +109,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * this floor the cover would fade in halfway and be torn straight down — reading as "a small
      * delay then an ad" rather than a real loading state. This only *pads* a fetch that finished
      * sooner than the floor; a slower fetch is never delayed, and a cached ad ([isReady]) still
-     * shows instantly. Set to `0` to disable the floor.
+     * shows instantly. Defaults to [NextGenAdsConfig.minLoadingCoverMs]; `0` disables the floor.
      */
-    var minLoadingCoverMs = 500L
+    var minLoadingCoverMs: Long by ConfigDefault { NextGenAdsConfig.minLoadingCoverMs }
 
     /**
      * Caption shown on the loading cover while an ad is being fetched on demand. Set from the host
@@ -215,14 +240,19 @@ class InterstitialAdHelper(private val adUnitId: String) {
      * trigger point where nothing was preloaded.
      *
      * [timeoutMs] bounds the wait: if the ad hasn't loaded by then, [onComplete] fires so the caller
-     * proceeds, and the in-flight load is left to warm the cache for next time. `0` waits for the
-     * load result (which is itself bounded by the retry budget).
+     * proceeds, and the in-flight load is left to warm the cache for next time. Defaults to
+     * [NextGenAdsConfig.forceShowTimeoutMs]; `0` waits for the load result (which is itself bounded
+     * by the retry budget).
      *
      * [onComplete] is invoked exactly once — after the ad is dismissed, on failure/timeout, or
      * synchronously when ads are disabled.
      */
     @JvmOverloads
-    fun loadAndShow(activity: Activity, timeoutMs: Long = 0L, onComplete: () -> Unit = {}) {
+    fun loadAndShow(
+        activity: Activity,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
+        onComplete: () -> Unit = {},
+    ) {
         if (!NextGenAds.canShowAds(AdFormat.INTERSTITIAL)) {
             onComplete()
             return
@@ -489,8 +519,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
      *
      * @param nth show on every Nth call; values `<= 1` show on every call.
      * @param forceLoad when the gate opens with no cached ad, load one on demand and show it.
-     * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
-     *   used when [forceLoad] is `true`.
+     * @param timeoutMs upper bound (ms) on the forced-load wait, defaulting to
+     *   [NextGenAdsConfig.forceShowTimeoutMs]; `0` waits for the load result. Only used when
+     *   [forceLoad] is `true`.
      * @return `true` if an ad is being shown (or, when forced, is being loaded to show).
      */
     @JvmOverloads
@@ -498,7 +529,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         activity: Activity,
         nth: Int = 1,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean {
         triggerCount++
@@ -525,8 +556,9 @@ class InterstitialAdHelper(private val adUnitId: String) {
      *
      * @param nth clicks between shows after the first; values `<= 1` show on every call.
      * @param forceLoad when a gated-in call has no cached ad, load one on demand and show it.
-     * @param timeoutMs upper bound (ms) on the forced-load wait; `0` waits for the load result. Only
-     *   used when [forceLoad] is `true`.
+     * @param timeoutMs upper bound (ms) on the forced-load wait, defaulting to
+     *   [NextGenAdsConfig.forceShowTimeoutMs]; `0` waits for the load result. Only used when
+     *   [forceLoad] is `true`.
      * @return `true` if an ad is being shown (or, when forced, is being loaded to show).
      */
     @JvmOverloads
@@ -534,7 +566,7 @@ class InterstitialAdHelper(private val adUnitId: String) {
         activity: Activity,
         nth: Int = 1,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean {
         val count = ++triggerCount
@@ -605,7 +637,7 @@ object Interstitials {
     fun loadAndShow(
         activity: Activity,
         adUnitId: String,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ) = get(adUnitId).loadAndShow(activity, timeoutMs, onComplete)
 
@@ -621,7 +653,7 @@ object Interstitials {
         adUnitId: String,
         nth: Int = 1,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean = get(adUnitId).showEvery(activity, nth, forceLoad, timeoutMs, onComplete)
 
@@ -638,7 +670,7 @@ object Interstitials {
         adUnitId: String,
         nth: Int = 1,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean = get(adUnitId).showFirstThenEvery(activity, nth, forceLoad, timeoutMs, onComplete)
 }

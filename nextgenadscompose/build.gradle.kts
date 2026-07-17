@@ -39,7 +39,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.Ali-Hassan785"
             artifactId = "nextgenads-compose"
-            version = "1.4.0"
+            version = "1.0.0"
 
             afterEvaluate {
                 from(components["release"])

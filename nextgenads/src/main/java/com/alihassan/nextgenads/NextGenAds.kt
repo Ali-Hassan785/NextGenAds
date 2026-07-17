@@ -1,6 +1,7 @@
 package com.alihassan.nextgenads
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Handler
@@ -447,10 +448,74 @@ object NextGenAds {
      */
     private val pendingCallbacks = mutableListOf<Runnable>()
 
+    /** Manifest `<meta-data>` key the AdMob/Ad Manager App ID is declared under (also read by UMP). */
+    private const val APP_ID_METADATA_KEY = "com.google.android.gms.ads.APPLICATION_ID"
+
+    /**
+     * Initializes the Next-Gen Mobile Ads SDK, reading the App ID from the manifest.
+     *
+     * Use this when your App ID is declared once as a `<meta-data>` in `AndroidManifest.xml`:
+     * ```
+     * <meta-data
+     *     android:name="com.google.android.gms.ads.APPLICATION_ID"
+     *     android:value="ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy" />
+     * ```
+     * This is the **same** entry UMP (consent) already requires, so sourcing the App ID from it keeps
+     * a single source of truth — no second copy in code to drift out of sync. If the meta-data is
+     * missing or blank, a clear error is logged and initialization is skipped (nothing is requested);
+     * pass the id explicitly with [initialize] `(context, appId, …)` if you'd rather not use the
+     * manifest.
+     *
+     * @param testDeviceIds device ids that should always receive test ads (safe to ship empty).
+     * @param onComplete invoked on the main thread once initialization finishes — start preloading
+     *   interstitials / native ads here.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun initialize(
+        context: Context,
+        testDeviceIds: List<String> = emptyList(),
+        onComplete: Runnable? = null,
+    ) {
+        val appId = readManifestAppId(context)
+        if (appId.isNullOrBlank()) {
+            log(
+                "Cannot initialize: no AdMob App ID found. Add a <meta-data " +
+                    "android:name=\"$APP_ID_METADATA_KEY\" android:value=\"ca-app-pub-…~…\" /> to your " +
+                    "AndroidManifest.xml, or call initialize(context, appId, …) with the id directly.",
+            )
+            return
+        }
+        initialize(context, appId, testDeviceIds, onComplete)
+    }
+
+    /**
+     * Reads the AdMob App ID from the application's manifest `<meta-data>`, or `null` if it isn't
+     * declared. A `String` value comes back directly; an `@string/…` resource reference is resolved
+     * by the framework to its string, while a bare numeric value would arrive as a non-string and is
+     * treated as absent (the App ID must be a string).
+     */
+    private fun readManifestAppId(context: Context): String? = runCatching {
+        val appInfo = context.packageManager.getApplicationInfo(
+            context.packageName,
+            PackageManager.GET_META_DATA,
+        )
+        appInfo.metaData?.getString(APP_ID_METADATA_KEY)
+    }.getOrNull()
+
+    /**
+     * A well-formed AdMob/Ad Manager App ID looks like `ca-app-pub-################~##########` — note
+     * the **tilde**. The most common mistake is passing an ad **unit** id (which uses a **slash**,
+     * `…/…`) here instead; that fails only later, at request time, with a cryptic `INVALID_REQUEST`.
+     */
+    private fun looksLikeAppId(appId: String): Boolean =
+        appId.startsWith("ca-app-pub-") && appId.contains("~")
+
     /**
      * Initializes the Next-Gen Mobile Ads SDK.
      *
-     * @param appId your AdMob/Ad Manager app id (e.g. `ca-app-pub-xxx~yyy`).
+     * @param appId your AdMob/Ad Manager app id (e.g. `ca-app-pub-xxx~yyy`). Prefer [initialize]
+     *   `(context, testDeviceIds, onComplete)` to read it from the manifest instead of hard-coding it.
      * @param testDeviceIds device ids that should always receive test ads (safe to ship empty).
      * @param onComplete invoked on the main thread once initialization finishes — start preloading
      *   interstitials / native ads here.
@@ -463,6 +528,14 @@ object NextGenAds {
         testDeviceIds: List<String> = emptyList(),
         onComplete: Runnable? = null,
     ) {
+        // Fail loud, early: a malformed App ID otherwise surfaces only as an opaque INVALID_REQUEST on
+        // the first ad load. Still attempt init so the SDK's own diagnostics also appear.
+        if (!looksLikeAppId(appId)) {
+            log(
+                "App ID \"$appId\" is not of the form ca-app-pub-…~… — did you pass an ad unit id " +
+                    "(…/…) by mistake? Initialization will likely fail with INVALID_REQUEST.",
+            )
+        }
         if (initialized) {
             // Deliver on the main thread like the normal completion path, so callers can rely on it.
             onComplete?.let { mainHandler.post(it) }

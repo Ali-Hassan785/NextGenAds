@@ -2,6 +2,7 @@ package com.alihassan.nextgenads.splash
 
 import android.app.Activity
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.appopen.SplashAppOpenAd
 import com.alihassan.nextgenads.interstitial.SplashAd
 
@@ -55,10 +56,13 @@ object SplashAdGate {
      * @param coldStartAdType format shown on a cold start. Defaults to [SplashAdType.INTERSTITIAL].
      * @param warmStartAdType format shown on a warm / hot start. Defaults to [SplashAdType.APP_OPEN].
      * @param minDelayMs minimum time (ms) to keep the splash visible before the ad can show.
-     * @param timeoutMs maximum time (ms) to wait for the ad; coerced to be ≥ [minDelayMs]. `0`
-     *   disables the timeout (bounded only by the load's own retry budget).
-     * @param retryOnFailure when `false` (default) the splash load is a **single** attempt — a failed
-     *   load proceeds at once and never fires retry requests. `true` keeps the helper's retry/backoff.
+     *   Defaults to [NextGenAdsConfig.splashMinDelayMs].
+     * @param timeoutMs maximum time (ms) to wait for the ad; coerced to be ≥ [minDelayMs]. Defaults
+     *   to [NextGenAdsConfig.splashTimeoutMs]; `0` disables the timeout (bounded only by the load's
+     *   own retry budget).
+     * @param retryOnFailure when `false` (the default, from [NextGenAdsConfig.splashRetryOnFailure])
+     *   the splash load is a **single** attempt — a failed load proceeds at once and never fires
+     *   retry requests. `true` keeps the helper's retry/backoff.
      * @param onComplete run once, on the main thread, when the splash should be dismissed.
      */
     @JvmStatic
@@ -70,9 +74,9 @@ object SplashAdGate {
         appOpenUnitId: String,
         coldStartAdType: SplashAdType = SplashAdType.INTERSTITIAL,
         warmStartAdType: SplashAdType = SplashAdType.APP_OPEN,
-        minDelayMs: Long = 1_500L,
-        timeoutMs: Long = 8_000L,
-        retryOnFailure: Boolean = false,
+        minDelayMs: Long = NextGenAdsConfig.splashMinDelayMs,
+        timeoutMs: Long = NextGenAdsConfig.splashTimeoutMs,
+        retryOnFailure: Boolean = NextGenAdsConfig.splashRetryOnFailure,
         onComplete: () -> Unit,
     ) {
         val type = if (coldStart) coldStartAdType else warmStartAdType

@@ -223,6 +223,30 @@ object BannerAdHelper {
             return
         }
 
+        // An adaptive banner sizes itself to the container's width. If the container hasn't been laid
+        // out yet — e.g. load() was called from onCreate before the first layout pass — its width is
+        // 0, and [bannerWidthDp] would fall back to the full screen width. Inside any narrower slot
+        // (a padded card, a split pane) that produces an oversized banner that clips or logs "Not
+        // enough space to show the full ad". Wait for the first layout, then retry with the real
+        // width. Fixed sizes ignore width, and an already-laid-out container proceeds immediately;
+        // `isLaidOut` guards against deferring more than once (so a genuinely 0-width slot still
+        // resolves, via the screen-width fallback, instead of waiting forever).
+        if (size.isAdaptive && container.width <= 0 && !container.isLaidOut) {
+            NextGenAds.log("Banner container not laid out yet; deferring request to first layout: $adUnitId")
+            container.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(
+                    v: View, l: Int, t: Int, r: Int, b: Int, oldL: Int, oldT: Int, oldR: Int, oldB: Int,
+                ) {
+                    container.removeOnLayoutChangeListener(this)
+                    loadAdaptiveBanner(
+                        activity, container, adUnitId, refill, collapsible, size,
+                        onLoaded, onFailed, remoteEnabled,
+                    )
+                }
+            })
+            return
+        }
+
         val key = poolKey(adUnitId, size)
         // Width to request: adaptive sizes flex to the container's content width; fixed sizes ignore it.
         val widthDp = bannerWidthDp(activity, container)

@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.interstitial.Interstitials
 
 /**
@@ -39,9 +40,13 @@ class InterstitialAdController internal constructor(
 
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind a loading cover) and shows it
-     * as soon as it lands. [onComplete] fires after dismissal, on failure, or on [timeoutMs] timeout.
+     * as soon as it lands. [onComplete] fires after dismissal, on failure, or on [timeoutMs] timeout,
+     * which defaults to [NextGenAdsConfig.forceShowTimeoutMs].
      */
-    fun loadAndShow(timeoutMs: Long = 8_000L, onComplete: () -> Unit = {}) {
+    fun loadAndShow(
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
+        onComplete: () -> Unit = {},
+    ) {
         val activity = activityProvider() ?: return onComplete()
         helper.loadAndShow(activity, timeoutMs, onComplete)
     }
@@ -50,7 +55,7 @@ class InterstitialAdController internal constructor(
     fun showEvery(
         nth: Int,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean {
         val activity = activityProvider() ?: run { onComplete(); return false }
@@ -61,7 +66,7 @@ class InterstitialAdController internal constructor(
     fun showFirstThenEvery(
         nth: Int,
         forceLoad: Boolean = false,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ): Boolean {
         val activity = activityProvider() ?: run { onComplete(); return false }

@@ -12,7 +12,9 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.alihassan.nextgenads.ConfigDefault
 import com.alihassan.nextgenads.NextGenAds
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.R
 import com.alihassan.nextgenads.events.AdFormat
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
@@ -46,15 +48,19 @@ class RewardedAdHelper(private val adUnitId: String) {
     // Concurrent load() callers all get notified instead of every caller-after-the-first being dropped.
     private val pending = mutableListOf<(Boolean) -> Unit>()
 
-    /** Maximum number of automatic reload attempts after a failed load. */
-    var maxRetries = 3
+    /**
+     * Maximum number of automatic reload attempts after a failed load. Defaults to
+     * [NextGenAdsConfig.maxRetries]; assigning it pins the value for this unit.
+     */
+    var maxRetries: Int by ConfigDefault { NextGenAdsConfig.maxRetries }
 
     /**
      * How long (ms) a loaded rewarded ad stays valid in the cache. AdMob full-screen ads expire
      * roughly an hour after loading; a stale ad's show fails and the reward opportunity is lost, so
-     * anything older is dropped and re-requested instead of shown.
+     * anything older is dropped and re-requested instead of shown. Defaults to
+     * [NextGenAdsConfig.adValidityMs].
      */
-    var adValidityMs = 55 * 60 * 1000L
+    var adValidityMs: Long by ConfigDefault { NextGenAdsConfig.adValidityMs }
 
     /**
      * When `true`, the helper keeps an ad ready around [show]: it requests the next ad after each
@@ -65,32 +71,35 @@ class RewardedAdHelper(private val adUnitId: String) {
      * Default `false` so a preloaded ad results in a **single** request — no extra load per show, and
      * a [show] with no cached ad simply invokes `onComplete` (returning `false`) so the caller can
      * show its own "ad not ready" message. Preload explicitly via [load] / [RewardedAds.preload], or
-     * call [loadAndShow] yourself for on-demand load-and-show.
+     * call [loadAndShow] yourself for on-demand load-and-show. Defaults to
+     * [NextGenAdsConfig.autoReload].
      */
-    var autoReload = false
+    var autoReload: Boolean by ConfigDefault { NextGenAdsConfig.autoReload }
 
     /**
      * Upper bound (ms) on the force-load wait when [autoReload] is `true` and [show] must fetch an ad
-     * on demand. `0` waits for the load result (itself bounded by the retry budget). Ignored when
-     * [autoReload] is `false`.
+     * on demand. Defaults to [NextGenAdsConfig.rewardedForceShowTimeoutMs]; `0` waits for the load
+     * result (itself bounded by the retry budget). Ignored when [autoReload] is `false`.
      */
-    var autoReloadTimeoutMs = 0L
+    var autoReloadTimeoutMs: Long by ConfigDefault { NextGenAdsConfig.rewardedForceShowTimeoutMs }
 
     /**
      * Optional artificial dwell (ms) on a "Showing ad…" cover before an already-available ad opens,
-     * so it doesn't pop in abruptly. Defaults to `0` — a ready ad shows **instantly** (smoothest).
-     * This is separate from the "Loading ad…" cover [loadAndShow] shows while genuinely fetching an
-     * ad, which always appears (it hides real network latency, not an artificial delay).
+     * so it doesn't pop in abruptly. Defaults to [NextGenAdsConfig.loadingOverlayMs] (`0`) — a ready
+     * ad shows **instantly** (smoothest). This is separate from the "Loading ad…" cover [loadAndShow]
+     * shows while genuinely fetching an ad, which always appears (it hides real network latency, not
+     * an artificial delay).
      */
-    var loadingOverlayMs = 0L
+    var loadingOverlayMs: Long by ConfigDefault { NextGenAdsConfig.loadingOverlayMs }
 
     /**
      * Minimum time (ms) the "Loading ad…" cover stays on screen during a genuine on-demand fetch
      * (via [loadAndShow]) before the ad opens, so a fast/warm fetch reads as a real loading state
      * instead of a flash. Only *pads* a fetch that finished sooner than the floor; a slower fetch is
-     * never delayed, and a cached ad ([isReady]) still shows instantly. Set to `0` to disable.
+     * never delayed, and a cached ad ([isReady]) still shows instantly. Defaults to
+     * [NextGenAdsConfig.minLoadingCoverMs]; `0` disables the floor.
      */
-    var minLoadingCoverMs = 500L
+    var minLoadingCoverMs: Long by ConfigDefault { NextGenAdsConfig.minLoadingCoverMs }
 
     /**
      * Caption shown on the loading cover while an ad is being fetched on demand. `null` (default)
@@ -208,13 +217,14 @@ class RewardedAdHelper(private val adUnitId: String) {
      * and show it the moment it loads — higher show-rate than [show] when nothing was preloaded.
      *
      * [timeoutMs] bounds the wait; if it elapses first, [onComplete] fires (no reward) and the load
-     * is left to warm the cache. `0` waits for the load result. [onComplete] is invoked exactly once.
+     * is left to warm the cache. Defaults to [NextGenAdsConfig.rewardedForceShowTimeoutMs]; `0` waits
+     * for the load result. [onComplete] is invoked exactly once.
      */
     @JvmOverloads
     fun loadAndShow(
         activity: Activity,
         onReward: (RewardItem) -> Unit,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.rewardedForceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ) {
         if (!NextGenAds.canShowAds(AdFormat.REWARDED)) {
@@ -497,7 +507,7 @@ object RewardedAds {
         activity: Activity,
         adUnitId: String,
         onReward: (RewardItem) -> Unit,
-        timeoutMs: Long = 0L,
+        timeoutMs: Long = NextGenAdsConfig.rewardedForceShowTimeoutMs,
         onComplete: () -> Unit = {},
     ) = get(adUnitId).loadAndShow(activity, onReward, timeoutMs, onComplete)
 }

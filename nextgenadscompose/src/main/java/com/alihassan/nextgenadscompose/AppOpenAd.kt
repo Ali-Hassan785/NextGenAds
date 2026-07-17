@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.alihassan.nextgenads.NextGenAdsConfig
 import com.alihassan.nextgenads.appopen.AppOpenAdManager
 import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.appopen.AppOpenCoverStyle
@@ -34,13 +35,14 @@ class AppOpenAdController internal constructor(
     /**
      * Shows the cached ad instantly, or fetches one on demand (behind [coverStyle]'s cover) and
      * shows it as soon as it lands. [onComplete] fires after dismissal, on failure, or on a
-     * [timeoutMs] timeout so the caller can proceed into the app.
+     * [timeoutMs] timeout so the caller can proceed into the app; the timeout defaults to
+     * [NextGenAdsConfig.forceShowTimeoutMs].
      *
      * [coverStyle] defaults to the branded [AppOpenCoverStyle.WELCOME] "Welcome back" cover; pass
      * [AppOpenCoverStyle.LOADING] for the plain spinner (e.g. on a splash).
      */
     fun loadAndShow(
-        timeoutMs: Long = 8_000L,
+        timeoutMs: Long = NextGenAdsConfig.forceShowTimeoutMs,
         coverStyle: AppOpenCoverStyle = AppOpenCoverStyle.WELCOME,
         onComplete: () -> Unit = {},
     ) {
