@@ -23,8 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.alihassan.nextgenads.NextGenAds
-import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.splash.SplashAdGate
 import com.alihassan.nextgenads.splash.SplashAdType
 
@@ -70,21 +68,19 @@ class ComposeSplashActivity : AppCompatActivity() {
 
     /** Consent → init → splash ad (cold = interstitial, warm/hot = app-open) → next screen. */
     private fun startAdFlow() {
-        val testHash = if (BuildConfig.DEBUG) SampleApp.TEST_DEVICE_HASH else null
-        ConsentManager.getInstance(this, testHash).gatherConsent(this, forceEea = testHash != null) {
-            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
-                handler.removeCallbacksAndMessages(null) // init done: the ad flow now owns completion
-                SplashAdGate.show(
-                    activity = this,
-                    coldStart = coldStart,
-                    interstitialUnitId = INTERSTITIAL_UNIT,
-                    appOpenUnitId = SampleApp.APP_OPEN_UNIT,
-                    // Cold start (fresh process) → interstitial; warm / hot relaunch → app-open.
-                    coldStartAdType = SplashAdType.INTERSTITIAL,
-                    warmStartAdType = SplashAdType.APP_OPEN,
-                    onComplete = ::goToNext,
-                )
-            }
+        AdsBootstrap.gatherConsentThenInitialize(this) {
+            handler.removeCallbacksAndMessages(null) // init done: the ad flow now owns completion
+            SplashAdGate.show(
+                activity = this,
+                coldStart = coldStart,
+                // Splash-only units, separate from the in-app ones — see AdUnits.
+                interstitialUnitId = AdUnits.SPLASH_INTERSTITIAL,
+                appOpenUnitId = AdUnits.SPLASH_APP_OPEN,
+                // Cold start (fresh process) → interstitial; warm / hot relaunch → app-open.
+                coldStartAdType = SplashAdType.INTERSTITIAL,
+                warmStartAdType = SplashAdType.APP_OPEN,
+                onComplete = ::goToNext,
+            )
         }
     }
 
@@ -109,10 +105,6 @@ class ComposeSplashActivity : AppCompatActivity() {
     }
 
     private companion object {
-        // Google's official sample / test ids — replace with your own for release.
-        const val APP_ID = "ca-app-pub-3940256099942544~3347511713"
-        const val INTERSTITIAL_UNIT = "ca-app-pub-3940256099942544/1033173712"
-
         const val KEY_COLD = "ngad_compose_splash_cold_start"
         const val WATCHDOG_MS = 10_000L
     }

@@ -30,7 +30,6 @@ import com.alihassan.nextgenads.appopen.AppOpenAds
 import com.alihassan.nextgenads.banner.BannerAdHelper
 import com.alihassan.nextgenads.banner.BannerCollapsible
 import com.alihassan.nextgenads.banner.BannerSize
-import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.events.AdEventListener
 import com.alihassan.nextgenads.events.AdFormat
 import com.alihassan.nextgenads.events.ShowRateTracker
@@ -129,14 +128,14 @@ class MainActivity : AppCompatActivity() {
 
         // 2. Banner.
         collapsibleCheck = findViewById(R.id.cbCollapsible)
-        findViewById<Button>(R.id.btnPreloadBanner).setOnClickListener { preloadBanner() }
-        findViewById<Button>(R.id.btnShowBanner).setOnClickListener { showBanner() }
-        findViewById<Button>(R.id.btnLoadShowBanner).setOnClickListener { showBanner() }
+        findViewById<Button>(R.id.btnPreloadBanner).setOnClickListener { warmBannerCache() }
+        findViewById<Button>(R.id.btnShowBanner).setOnClickListener { loadAndDisplayBanner() }
+        findViewById<Button>(R.id.btnLoadShowBanner).setOnClickListener { loadAndDisplayBanner() }
 
         // 3. Native.
-        findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { preloadNative() }
-        findViewById<Button>(R.id.btnShowNative).setOnClickListener { showNative() }
-        findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { showNative() }
+        findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { warmNativeAdCache() }
+        findViewById<Button>(R.id.btnShowNative).setOnClickListener { loadAndDisplayNativeAd() }
+        findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { loadAndDisplayNativeAd() }
         findViewById<Button>(R.id.btnCustomNative).setOnClickListener {
             startActivity(Intent(this, CustomNativeActivity::class.java))
         }
@@ -144,26 +143,26 @@ class MainActivity : AppCompatActivity() {
         // 4. Interstitial.
         // The interstitial loading-cover copy is customisable from the host app (localise / rebrand).
         // Leave a field unset to keep the module default, or override the ngad_ad_* string resources.
-        Interstitials.get(INTERSTITIAL_UNIT).apply {
+        Interstitials.get(AdUnits.INTERSTITIAL).apply {
             loadingText = getString(R.string.interstitial_loading)
             showingText = getString(R.string.interstitial_showing)
         }
-        findViewById<Button>(R.id.btnPreloadInterstitial).setOnClickListener { preloadInterstitial() }
-        findViewById<Button>(R.id.btnShowInterstitial).setOnClickListener { showInterstitial() }
-        findViewById<Button>(R.id.btnLoadShowInterstitial).setOnClickListener { loadAndShowInterstitial() }
-        findViewById<Button>(R.id.btnCounterInterstitial).setOnClickListener { showInterstitialByCounter() }
+        findViewById<Button>(R.id.btnPreloadInterstitial).setOnClickListener { warmInterstitialCache() }
+        findViewById<Button>(R.id.btnShowInterstitial).setOnClickListener { showCachedInterstitial() }
+        findViewById<Button>(R.id.btnLoadShowInterstitial).setOnClickListener { loadAndPresentInterstitial() }
+        findViewById<Button>(R.id.btnCounterInterstitial).setOnClickListener { presentCounterGatedInterstitial() }
 
         // 5. Rewarded.
-        findViewById<Button>(R.id.btnPreloadRewarded).setOnClickListener { preloadRewarded() }
-        findViewById<Button>(R.id.btnShowRewarded).setOnClickListener { showRewardedWithDialog() }
+        findViewById<Button>(R.id.btnPreloadRewarded).setOnClickListener { warmRewardedCache() }
+        findViewById<Button>(R.id.btnShowRewarded).setOnClickListener { confirmThenPresentRewarded() }
 
         // 6. Rewarded interstitial.
-        findViewById<Button>(R.id.btnPreloadRewardedInt).setOnClickListener { preloadRewardedInterstitial() }
-        findViewById<Button>(R.id.btnShowRewardedInt).setOnClickListener { showRewardedInterstitialWithDialog() }
+        findViewById<Button>(R.id.btnPreloadRewardedInt).setOnClickListener { warmRewardedInterstitialCache() }
+        findViewById<Button>(R.id.btnShowRewardedInt).setOnClickListener { confirmThenPresentRewardedInterstitial() }
 
         // 7. App open.
-        findViewById<Button>(R.id.btnPreloadAppOpen).setOnClickListener { preloadAppOpen() }
-        findViewById<Button>(R.id.btnShowAppOpen).setOnClickListener { showAppOpen() }
+        findViewById<Button>(R.id.btnPreloadAppOpen).setOnClickListener { warmAppOpenCache() }
+        findViewById<Button>(R.id.btnShowAppOpen).setOnClickListener { showCachedAppOpenAd() }
 
         // Per-format on/off switches: ON = that ad may load & show, OFF = it won't.
         setupAdToggles()
@@ -173,7 +172,7 @@ class MainActivity : AppCompatActivity() {
 
         // Gather consent and initialize automatically as soon as the screen opens, so ads are ready
         // without a manual tap (there is no consent button — this is the only trigger).
-        gatherConsentAndInit()
+        gatherConsentThenInitialize()
     }
 
     // --- 8. In-app update --------------------------------------------------
@@ -205,35 +204,12 @@ class MainActivity : AppCompatActivity() {
 
     // --- 1. Consent + init -------------------------------------------------
 
-    private fun gatherConsentAndInit() {
-        // UMP debug facilities (test-device hash + forced EEA geography) must never reach release
-        // builds — they would force the consent form on real users and skew ad serving.
-        val testDeviceHash = if (BuildConfig.DEBUG) SampleApp.TEST_DEVICE_HASH else null
-        val consent = ConsentManager.getInstance(this, testDeviceHash)
-
-        // Once consent has already been gathered (or isn't required), don't re-present the form on
-        // subsequent button taps — just make sure the SDK is initialized and move on.
-        if (consent.canRequestAds) {
-            setStatus("Initializing SDK…")
-            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
-                setStatus("Initialized ✓  — you can preload / show ads now")
-            }
-            return
-        }
-
-        setStatus("Gathering consent…")
-        consent.gatherConsent(this, forceEea = testDeviceHash != null) { error ->
-            if (error != null) {
-                setStatus("Consent error: ${error.message}")
-            }
-            if (!consent.canRequestAds) {
-                setStatus("Ads not allowed (consent not granted)")
-                return@gatherConsent
-            }
-            setStatus("Initializing SDK…")
-            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
-                setStatus("Initialized ✓  — you can preload / show ads now")
-            }
+    private fun gatherConsentThenInitialize() {
+        // Consent + init are centralised in AdsBootstrap (the same handshake the splashes use); the
+        // App ID is read from the manifest. Just report readiness back to the status line here.
+        setStatus("Gathering consent & initializing…")
+        AdsBootstrap.gatherConsentThenInitialize(this) {
+            setStatus("Initialized ✓  — you can preload / show ads now")
         }
     }
 
@@ -250,10 +226,10 @@ class MainActivity : AppCompatActivity() {
         else -> BannerSize.ADAPTIVE
     }
 
-    private fun preloadBanner() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.banner, "Banner")) return
+    private fun warmBannerCache() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.banner, "Banner")) return
         val size = selectedBannerSize()
-        BannerAdHelper.preload(this, BANNER_UNIT, count = 1, size = size, remoteEnabled = AdsConfig.banner)
+        BannerAdHelper.preload(this, AdUnits.BANNER, count = 1, size = size, remoteEnabled = AdsConfig.banner)
         setStatus("Preloading banner (${size.name.lowercase()})…")
     }
 
@@ -264,8 +240,8 @@ class MainActivity : AppCompatActivity() {
      * larger on first impression and collapses via the SDK's expand/collapse control); otherwise a
      * normal banner is shown. Both use the selected size.
      */
-    private fun showBanner() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.banner, "Banner")) return
+    private fun loadAndDisplayBanner() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.banner, "Banner")) return
         val size = selectedBannerSize()
         val collapsible = collapsibleCheck.isChecked
         val label = if (collapsible) "collapsible banner" else "banner"
@@ -273,7 +249,7 @@ class MainActivity : AppCompatActivity() {
         BannerAdHelper.loadAdaptiveBanner(
             activity = this,
             container = bannerContainer,
-            adUnitId = BANNER_UNIT,
+            adUnitId = AdUnits.BANNER,
             collapsible = if (collapsible) BannerCollapsible.BOTTOM else null,
             size = size,
             remoteEnabled = AdsConfig.banner,
@@ -306,18 +282,18 @@ class MainActivity : AppCompatActivity() {
         if (adTypeGroup.checkedRadioButtonId == R.id.rbTypeBanner) AdType.BANNER else AdType.NATIVE
 
     /** Warms the cache for whichever format the unified view is set to. */
-    private fun preloadNative() {
-        if (!ensureReady()) return
+    private fun warmNativeAdCache() {
+        if (!ensureSdkInitialized()) return
         val banner = selectedAdType() == AdType.BANNER
-        if (!remoteAllows(if (banner) AdsConfig.banner else AdsConfig.native, if (banner) "Banner" else "Native")) return
+        if (!ensureRemoteEnabled(if (banner) AdsConfig.banner else AdsConfig.native, if (banner) "Banner" else "Native")) return
         if (selectedAdType() == AdType.BANNER) {
             // Warm the SAME size the unified view will request, else the preloaded (adaptive) banner
             // won't match the selected fixed size and the cache is bypassed.
             val size = selectedBannerSize()
-            BannerAdHelper.preload(this, BANNER_UNIT, count = 1, size = size, remoteEnabled = AdsConfig.banner)
+            BannerAdHelper.preload(this, AdUnits.BANNER, count = 1, size = size, remoteEnabled = AdsConfig.banner)
             setStatus("Preloading banner (unified view, ${size.name.lowercase()})…")
         } else {
-            NativeAdHelper.preload(NATIVE_UNIT, count = 1, remoteEnabled = AdsConfig.native)
+            NativeAdHelper.preload(AdUnits.NATIVE, count = 1, remoteEnabled = AdsConfig.native)
             setStatus("Preloading native…")
         }
     }
@@ -326,16 +302,16 @@ class MainActivity : AppCompatActivity() {
      * Loads an ad into the single [BannerNativeView] based on the selected ad type — a banner, or a
      * native ad rendered with the chosen template (instant if preloaded, otherwise on demand).
      */
-    private fun showNative() {
-        if (!ensureReady()) return
+    private fun loadAndDisplayNativeAd() {
+        if (!ensureSdkInitialized()) return
         val adType = selectedAdType()
         val allowed = if (adType == AdType.BANNER) AdsConfig.banner else AdsConfig.native
-        if (!remoteAllows(allowed, if (adType == AdType.BANNER) "Banner" else "Native")) return
+        if (!ensureRemoteEnabled(allowed, if (adType == AdType.BANNER) "Banner" else "Native")) return
         if (adType == AdType.BANNER) {
             val size = selectedBannerSize()
             setStatus("Showing banner (unified view, ${size.name.lowercase()})…")
             nativeAdView.load(
-                adUnitId = BANNER_UNIT,
+                adUnitId = AdUnits.BANNER,
                 remoteEnabled = AdsConfig.banner,
                 adType = AdType.BANNER,
                 bannerSize = size,
@@ -347,7 +323,7 @@ class MainActivity : AppCompatActivity() {
         val template = selectedTemplate()
         setStatus("Showing native (${template.name.lowercase()})…")
         nativeAdView.load(
-            adUnitId = NATIVE_UNIT,
+            adUnitId = AdUnits.NATIVE,
             remoteEnabled = AdsConfig.native,
             adType = AdType.NATIVE,
             nativeTemplate = template,
@@ -358,25 +334,25 @@ class MainActivity : AppCompatActivity() {
 
     // --- 4. Interstitial ---------------------------------------------------
 
-    private fun preloadInterstitial() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.interstitial, "Interstitial")) return
-        Interstitials.preload(INTERSTITIAL_UNIT, remoteEnabled = AdsConfig.interstitial)
+    private fun warmInterstitialCache() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.interstitial, "Interstitial")) return
+        Interstitials.preload(AdUnits.INTERSTITIAL, remoteEnabled = AdsConfig.interstitial)
         setStatus("Preloading interstitial…")
     }
 
     /** Shows a preloaded interstitial, or loads a fresh one on demand when none is cached. */
-    private fun showInterstitial() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.interstitial, "Interstitial")) return
-        val helper = Interstitials.get(INTERSTITIAL_UNIT)
+    private fun showCachedInterstitial() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.interstitial, "Interstitial")) return
+        val helper = Interstitials.get(AdUnits.INTERSTITIAL)
         setStatus(if (helper.isReady) "Showing interstitial…" else "No ad preloaded — loading a fresh interstitial…")
         // Show the cached ad instantly if ready, otherwise request one on demand and show it.
         helper.loadAndShow(this, timeoutMs = 8_000L) { setStatus("Interstitial dismissed ✓") }
     }
 
     /** Loads an interstitial on demand and shows it as soon as it is ready. */
-    private fun loadAndShowInterstitial() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.interstitial, "Interstitial")) return
-        val helper = Interstitials.get(INTERSTITIAL_UNIT)
+    private fun loadAndPresentInterstitial() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.interstitial, "Interstitial")) return
+        val helper = Interstitials.get(AdUnits.INTERSTITIAL)
         setStatus(if (helper.isReady) "Showing interstitial…" else "Loading interstitial…")
         // loadAndShow raises the full-screen loading cover over the real on-demand fetch (instead of
         // the bare status line load { … } left the screen on), then shows the ad the moment it lands.
@@ -390,11 +366,11 @@ class MainActivity : AppCompatActivity() {
      * loads on demand (bounded by a 5s timeout) if the preload hasn't landed yet — e.g. on the very
      * first click, or after the splash interstitial consumed the same ad unit.
      */
-    private fun showInterstitialByCounter() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.interstitial, "Interstitial")) return
-        val helper = Interstitials.get(INTERSTITIAL_UNIT)
+    private fun presentCounterGatedInterstitial() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.interstitial, "Interstitial")) return
+        val helper = Interstitials.get(AdUnits.INTERSTITIAL)
         // Kick off a preload the moment the counter is first used, so even click #1 is warm.
-        if (!helper.isReady) Interstitials.preload(INTERSTITIAL_UNIT, remoteEnabled = AdsConfig.interstitial)
+        if (!helper.isReady) Interstitials.preload(AdUnits.INTERSTITIAL, remoteEnabled = AdsConfig.interstitial)
         counterClicks++
         val shown = helper.showFirstThenEvery(this, nth = 4, forceLoad = true, timeoutMs = 5_000L) {
             val load = if (helper.lastLoadMs >= 0) " · loaded in ${helper.lastLoadMs}ms" else ""
@@ -402,7 +378,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (!shown) {
             // A non-show click: warm the next ad so the gated-in click shows without a load wait.
-            Interstitials.preload(INTERSTITIAL_UNIT, remoteEnabled = AdsConfig.interstitial)
+            Interstitials.preload(AdUnits.INTERSTITIAL, remoteEnabled = AdsConfig.interstitial)
             val nextShowAt = ((counterClicks - 1) / 4 + 1) * 4 + 1
             setStatus("Click #$counterClicks — next ad at click #$nextShowAt")
         }
@@ -410,19 +386,19 @@ class MainActivity : AppCompatActivity() {
 
     // --- 5. Rewarded -------------------------------------------------------
 
-    private fun preloadRewarded() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.rewarded, "Rewarded")) return
+    private fun warmRewardedCache() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.rewarded, "Rewarded")) return
         setStatus("Preloading rewarded…")
         // Report the load result back to the UI instead of firing the preload blind.
-        RewardedAds.get(REWARDED_UNIT).load(remoteEnabled = AdsConfig.rewarded) { loaded ->
+        RewardedAds.get(AdUnits.REWARDED).load(remoteEnabled = AdsConfig.rewarded) { loaded ->
             setStatus(if (loaded) "Rewarded preloaded ✓ — ready to show" else "Rewarded preload failed")
         }
     }
 
     /** Asks the user to opt in, then shows a preloaded rewarded ad — or loads a fresh one on demand. */
-    private fun showRewardedWithDialog() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.rewarded, "Rewarded")) return
-        val helper = RewardedAds.get(REWARDED_UNIT)
+    private fun confirmThenPresentRewarded() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.rewarded, "Rewarded")) return
+        val helper = RewardedAds.get(AdUnits.REWARDED)
         MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short video to earn your reward?")
@@ -459,11 +435,11 @@ class MainActivity : AppCompatActivity() {
 
     // --- 6. Rewarded interstitial -----------------------------------------
 
-    private fun preloadRewardedInterstitial() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.rewardedInterstitial, "Rewarded interstitial")) return
+    private fun warmRewardedInterstitialCache() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.rewardedInterstitial, "Rewarded interstitial")) return
         setStatus("Preloading rewarded interstitial…")
         // Report the load result back to the UI instead of firing the preload blind.
-        RewardedInterstitials.get(REWARDED_INT_UNIT).load(true) { loaded ->
+        RewardedInterstitials.get(AdUnits.REWARDED_INT).load(true) { loaded ->
             setStatus(
                 if (loaded) "Rewarded interstitial preloaded ✓ — ready to show"
                 else "Rewarded interstitial preload failed",
@@ -472,9 +448,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Asks the user to opt in, then shows a preloaded rewarded interstitial — or loads a fresh one. */
-    private fun showRewardedInterstitialWithDialog() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.rewardedInterstitial, "Rewarded interstitial")) return
-        val helper = RewardedInterstitials.get(REWARDED_INT_UNIT)
+    private fun confirmThenPresentRewardedInterstitial() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.rewardedInterstitial, "Rewarded interstitial")) return
+        val helper = RewardedInterstitials.get(AdUnits.REWARDED_INT)
         MaterialAlertDialogBuilder(this)
             .setTitle("Earn a reward")
             .setMessage("Watch a short ad to earn your reward?")
@@ -511,9 +487,9 @@ class MainActivity : AppCompatActivity() {
 
     // --- 7. App open -------------------------------------------------------
 
-    private fun preloadAppOpen() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.appOpen, "App open")) return
-        AppOpenAds.preload(SampleApp.APP_OPEN_UNIT, remoteEnabled = AdsConfig.appOpen)
+    private fun warmAppOpenCache() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.appOpen, "App open")) return
+        AppOpenAds.preload(AdUnits.APP_OPEN, remoteEnabled = AdsConfig.appOpen)
         setStatus("Preloading app open…")
     }
 
@@ -521,9 +497,9 @@ class MainActivity : AppCompatActivity() {
      * Shows the app-open ad on demand. Note: it also shows automatically when you background the
      * app and return — that flow is wired in [SampleApp] via `AppOpenAdManager.install`.
      */
-    private fun showAppOpen() {
-        if (!ensureReady() || !remoteAllows(AdsConfig.appOpen, "App open")) return
-        val helper = AppOpenAds.get(SampleApp.APP_OPEN_UNIT)
+    private fun showCachedAppOpenAd() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.appOpen, "App open")) return
+        val helper = AppOpenAds.get(AdUnits.APP_OPEN)
         setStatus(if (helper.isReady) "Showing app open…" else "No ad preloaded — loading a fresh app-open ad…")
         // Show the cached ad instantly if ready, otherwise request one on demand and show it.
         helper.loadAndShow(this, timeoutMs = 8_000L) { setStatus("App open dismissed ✓") }
@@ -542,7 +518,7 @@ class MainActivity : AppCompatActivity() {
         setStatus(if (premium) "Premium ON — all ads purged & hidden, none will load" else "Premium OFF — ads allowed again")
     }
 
-    private fun ensureReady(): Boolean {
+    private fun ensureSdkInitialized(): Boolean {
         if (!NextGenAds.isInitialized()) {
             Toast.makeText(this, "Gather consent & initialize first", Toast.LENGTH_SHORT).show()
             return false
@@ -554,7 +530,7 @@ class MainActivity : AppCompatActivity() {
      * Gates a show trigger on its [AdsConfig] flag. Returns `true` when the ad is enabled; otherwise
      * updates the status line and returns `false` so the caller skips the show.
      */
-    private fun remoteAllows(enabled: Boolean, label: String): Boolean {
+    private fun ensureRemoteEnabled(enabled: Boolean, label: String): Boolean {
         if (!enabled) setStatus("$label disabled")
         return enabled
     }
@@ -693,13 +669,4 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    companion object {
-        // Google's official sample / test ids — replace with your own AdMob ids for release.
-        private const val APP_ID = "ca-app-pub-3940256099942544~3347511713"
-        private const val BANNER_UNIT = "ca-app-pub-3940256099942544/9214589741"
-        private const val NATIVE_UNIT = "ca-app-pub-3940256099942544/2247696110"
-        private const val INTERSTITIAL_UNIT = "ca-app-pub-3940256099942544/1033173712"
-        private const val REWARDED_UNIT = "ca-app-pub-3940256099942544/5224354917"
-        private const val REWARDED_INT_UNIT = "ca-app-pub-3940256099942544/5354046379"
-    }
 }

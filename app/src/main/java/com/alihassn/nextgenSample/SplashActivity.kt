@@ -5,8 +5,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
-import com.alihassan.nextgenads.NextGenAds
-import com.alihassan.nextgenads.consent.ConsentManager
 import com.alihassan.nextgenads.splash.SplashAdGate
 import com.alihassan.nextgenads.splash.SplashAdType
 
@@ -20,7 +18,7 @@ import com.alihassan.nextgenads.splash.SplashAdType
 class SplashActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private var coldStart = true
+        private var coldStart = true
     private var navigated = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,25 +39,23 @@ class SplashActivity : AppCompatActivity() {
         outState.putBoolean(KEY_COLD, coldStart)
     }
 
-    /** Consent → init → splash ad → Main. */
+    /** Consent → init → splash ad → Main. Consent + init are centralised in [AdsBootstrap]. */
     private fun startAdFlow() {
-        val testHash = if (BuildConfig.DEBUG) SampleApp.TEST_DEVICE_HASH else null
-        ConsentManager.getInstance(this, testHash).gatherConsent(this, forceEea = testHash != null) {
-            NextGenAds.initialize(this, APP_ID, SampleApp.TEST_DEVICE_IDS) {
-                handler.removeCallbacksAndMessages(null) // init done: the ad flow now owns completion
-                SplashAdGate.show(
-                    activity = this,
-                    coldStart = coldStart,
-                    interstitialUnitId = INTERSTITIAL_UNIT,
-                    appOpenUnitId = SampleApp.APP_OPEN_UNIT,
-                    // Show an interstitial on the splash for BOTH cold and warm/hot starts. An
-                    // interstitial uses the plain "Loading ad…" cover, so the branded "Welcome back"
-                    // dialog is never shown here. Flip either to SplashAdType.APP_OPEN for app-open.
-                    coldStartAdType = SplashAdType.INTERSTITIAL,
-                    warmStartAdType = SplashAdType.APP_OPEN,
-                    onComplete = ::goToMain,
-                )
-            }
+        AdsBootstrap.gatherConsentThenInitialize(this) {
+            handler.removeCallbacksAndMessages(null) // init done: the ad flow now owns completion
+            SplashAdGate.show(
+                activity = this,
+                coldStart = coldStart,
+                // Splash-only units, separate from the in-app ones — see AdUnits.
+                interstitialUnitId = AdUnits.SPLASH_INTERSTITIAL,
+                appOpenUnitId = AdUnits.SPLASH_APP_OPEN,
+                // Show an interstitial on the splash for BOTH cold and warm/hot starts. An
+                // interstitial uses the plain "Loading ad…" cover, so the branded "Welcome back"
+                // dialog is never shown here. Flip either to SplashAdType.APP_OPEN for app-open.
+                coldStartAdType = SplashAdType.INTERSTITIAL,
+                warmStartAdType = SplashAdType.APP_OPEN,
+                onComplete = ::goToMain,
+            )
         }
     }
 
@@ -83,10 +79,6 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private companion object {
-        // Google's official sample / test ids — replace with your own for release.
-        const val APP_ID = "ca-app-pub-3940256099942544~3347511713"
-        const val INTERSTITIAL_UNIT = "ca-app-pub-3940256099942544/1033173712"
-
         const val KEY_COLD = "ngad_splash_cold_start"
         const val WATCHDOG_MS = 10_000L
     }

@@ -109,7 +109,7 @@ class CustomNativeActivity : AppCompatActivity() {
             customNativeCode,
             customNativeBinder,
         ).forEach {
-            NativeAdHelper.populate(it, NATIVE_UNIT, refill = true, remoteEnabled = AdsConfig.native)
+            NativeAdHelper.populate(it, AdUnits.NATIVE, refill = true, remoteEnabled = AdsConfig.native)
         }
     }
 
@@ -122,8 +122,4 @@ class CustomNativeActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private companion object {
-        /** Google's official native test ad unit — replace with your own for release. */
-        const val NATIVE_UNIT = "ca-app-pub-3940256099942544/2247696110"
-    }
 }

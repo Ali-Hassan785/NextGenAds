@@ -109,10 +109,10 @@ private fun ComposeAdsScreen(onBack: () -> Unit) {
     }
 
     // Full-screen ad controllers (preloaded per the AdsConfig flags so a Show is instant).
-    val interstitial = rememberInterstitialAd(ComposeAdsUnits.INTERSTITIAL, preload = AdsConfig.interstitial)
-    val rewarded = rememberRewardedAd(ComposeAdsUnits.REWARDED, preload = AdsConfig.rewarded)
-    val rewardedInt = rememberRewardedInterstitialAd(ComposeAdsUnits.REWARDED_INT, preload = AdsConfig.rewardedInterstitial)
-    val appOpen = rememberAppOpenAd(SampleApp.APP_OPEN_UNIT, preload = AdsConfig.appOpen)
+    val interstitial = rememberInterstitialAd(AdUnits.INTERSTITIAL, preload = AdsConfig.interstitial)
+    val rewarded = rememberRewardedAd(AdUnits.REWARDED, preload = AdsConfig.rewarded)
+    val rewardedInt = rememberRewardedInterstitialAd(AdUnits.REWARDED_INT, preload = AdsConfig.rewardedInterstitial)
+    val appOpen = rememberAppOpenAd(AdUnits.APP_OPEN, preload = AdsConfig.appOpen)
 
     val updater = rememberInAppUpdateManager(updateType = UpdateType.FLEXIBLE, autoCheck = false) {
         onUpdateAvailable = { status = "Update available — starting download…" }
@@ -217,7 +217,7 @@ private fun ComposeAdsScreen(onBack: () -> Unit) {
             },
         ) {
             BannerAd(
-                adUnitId = ComposeAdsUnits.BANNER,
+                adUnitId = AdUnits.BANNER,
                 size = bannerSize,
                 remoteEnabled = AdsConfig.banner,
                 onLoaded = { status = "Banner shown ✓ (${bannerSize.name.lowercase()})" },
@@ -244,7 +244,7 @@ private fun ComposeAdsScreen(onBack: () -> Unit) {
             },
         ) {
             NativeAd(
-                adUnitId = ComposeAdsUnits.NATIVE,
+                adUnitId = AdUnits.NATIVE,
                 template = template,
                 remoteEnabled = AdsConfig.native,
                 onLoaded = { status = "Native shown ✓ (${template.name.lowercase()})" },
@@ -490,11 +490,3 @@ private fun <T> ChipRow(
     }
 }
 
-/** Ad unit ids for the Compose demo — Google's official test ids (mirror MainActivity / SampleApp). */
-private object ComposeAdsUnits {
-    const val BANNER = "ca-app-pub-3940256099942544/9214589741"
-    const val NATIVE = "ca-app-pub-3940256099942544/2247696110"
-    const val INTERSTITIAL = "ca-app-pub-3940256099942544/1033173712"
-    const val REWARDED = "ca-app-pub-3940256099942544/5224354917"
-    const val REWARDED_INT = "ca-app-pub-3940256099942544/5354046379"
-}
