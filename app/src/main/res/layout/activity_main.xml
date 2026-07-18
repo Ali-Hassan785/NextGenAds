@@ -457,6 +457,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Custom native templates" />
+
+                <!-- Warms a native ad here, then opens a second screen that binds it instantly
+                     (cross-screen preload via NativeAdPreloader). -->
+                <Button
+                    android:id="@+id/btnPreloadOpenScreen"
+                    style="@style/Widget.NextGen.Button.Ghost"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Preload native → open new screen" />
             </LinearLayout>
 
             <!-- ===== Interstitial ===== -->

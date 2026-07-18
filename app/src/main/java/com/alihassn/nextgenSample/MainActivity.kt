@@ -35,6 +35,7 @@ import com.alihassan.nextgenads.events.AdFormat
 import com.alihassan.nextgenads.events.ShowRateTracker
 import com.alihassan.nextgenads.interstitial.Interstitials
 import com.alihassan.nextgenads.nativead.NativeAdHelper
+import com.alihassan.nextgenads.nativead.NativeAdPreloader
 import com.alihassan.nextgenads.rewarded.RewardedAds
 import com.alihassan.nextgenads.rewardedinterstitial.RewardedInterstitials
 import com.alihassan.nextgenads.nativead.NativeTemplate
@@ -139,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnCustomNative).setOnClickListener {
             startActivity(Intent(this, CustomNativeActivity::class.java))
         }
+        findViewById<Button>(R.id.btnPreloadOpenScreen).setOnClickListener { preloadNativeAndOpenScreen() }
 
         // 4. Interstitial.
         // The interstitial loading-cover copy is customisable from the host app (localise / rebrand).
@@ -296,6 +298,20 @@ class MainActivity : AppCompatActivity() {
             NativeAdHelper.preload(AdUnits.NATIVE, count = 1, remoteEnabled = AdsConfig.native)
             setStatus("Preloading native…")
         }
+    }
+
+    /**
+     * Cross-screen preload: warm a native ad on **this** screen, then open [PreloadedNativeActivity],
+     * which binds it instantly with `NativeAdPreloader.showInto`. This is the Splash→next-screen
+     * pattern — the loading latency is hidden behind the screen transition. Nothing but the ad unit
+     * crosses the boundary; the preloader keys its state by unit, so both screens just name
+     * [AdUnits.NATIVE].
+     */
+    private fun preloadNativeAndOpenScreen() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.native, "Native")) return
+        NativeAdPreloader.preload(AdUnits.NATIVE, remoteEnabled = AdsConfig.native)
+        setStatus("Preloading native, opening the next screen…")
+        startActivity(Intent(this, PreloadedNativeActivity::class.java))
     }
 
     /**

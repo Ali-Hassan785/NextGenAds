@@ -44,6 +44,12 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <!-- Screen B of the cross-screen native-preload demo (warmed on MainActivity). -->
+        <activity
+            android:name=".PreloadedNativeActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <!-- Jetpack Compose demo screen: shows every ad format via :nextgenadscompose. -->
         <activity
             android:name=".ComposeAdsActivity"
