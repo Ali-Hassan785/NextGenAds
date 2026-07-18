@@ -44,8 +44,13 @@ enum class BannerCollapsible(internal val value: String) {
  * The size of banner to request. Two adaptive sizes flex their height to the slot width (recommended
  * for most placements), and the rest are the fixed IAB sizes.
  *
- * - [ADAPTIVE] — full-width **large anchored adaptive** banner (the default; height chosen by the SDK
- *   from the slot width). Best fill and the tallest anchored size.
+ * - [ADAPTIVE] — full-width **anchored adaptive** banner (the default; height chosen by the SDK from
+ *   the slot width to fit a standard creative). Reserves just the height the ad fills, so a short
+ *   creative isn't letterboxed with empty space above and below the ad.
+ * - [ADAPTIVE_LARGE] — full-width **large anchored adaptive** banner: the tallest anchored size (up to
+ *   ~15% taller than [ADAPTIVE]) for the best fill. A creative shorter than the reserved band is
+ *   centered in it, leaving vertical gaps — prefer [ADAPTIVE] unless you specifically want the taller
+ *   slot.
  * - [ADAPTIVE_INLINE] — **inline adaptive** banner for scrollable content; can be taller than an
  *   anchored banner and is sized for feeds/lists rather than a pinned top/bottom slot.
  * - [BANNER] — fixed 320×50.
@@ -59,6 +64,10 @@ enum class BannerCollapsible(internal val value: String) {
  */
 enum class BannerSize {
     ADAPTIVE {
+        override fun resolve(context: Context, widthDp: Int): AdSize =
+            AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
+    },
+    ADAPTIVE_LARGE {
         override fun resolve(context: Context, widthDp: Int): AdSize =
             AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, widthDp)
     },
@@ -86,7 +95,8 @@ enum class BannerSize {
     internal abstract fun resolve(context: Context, widthDp: Int): AdSize
 
     /** Whether this size flexes its dimensions to the slot width (vs. a fixed IAB size). */
-    internal val isAdaptive: Boolean get() = this == ADAPTIVE || this == ADAPTIVE_INLINE
+    internal val isAdaptive: Boolean
+        get() = this == ADAPTIVE || this == ADAPTIVE_LARGE || this == ADAPTIVE_INLINE
 
     companion object {
         /** Maps a case-insensitive size name (e.g. from XML) to a [BannerSize]; defaults to [ADAPTIVE]. */
