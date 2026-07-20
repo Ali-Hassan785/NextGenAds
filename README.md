@@ -631,7 +631,7 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `app:ngad_ad_type` | `banner`, `nativead` | `nativead` |
-| `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `feed`, `spotlight`, `action_top`, `half_media`, `stacked` | `medium` |
+| `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `fullscreen`, `feed`, `spotlight`, `action_top`, `half_media`, `stacked` | `medium` |
 | `app:ngad_banner_size` | banner size name (used when `ngad_ad_type="banner"`) — `adaptive`, `adaptive_inline`, `banner`, `large_banner`, `full_banner`, `leaderboard`, `medium_rectangle` | `adaptive` |
 | `app:ngad_customLayout` | a `@layout` reference (overrides `ngad_template`) | — |
 | `app:ngad_customShimmer` | a `@layout` reference (else auto-generated) | — |
@@ -665,6 +665,7 @@ NativeAdHelper.clear(AdUnits.NATIVE)   // or clear() for all units
 | `MEDIA_LEFT` | Media on the left, headline + body top-right, CTA bottom-right. |
 | `COLLAPSIBLE` | Media on top with a down-arrow control that collapses the media into a compact ad. |
 | `HERO` | Cinematic full-width media up top with the "Ad" badge overlaid, then icon + headline, body and a bold CTA. |
+| `FULLSCREEN` | Full-height card: media stretches to fill the leftover vertical space, then icon + headline/advertiser, rating, body and a bold CTA pinned to the bottom. For full-screen slots (host gives the view `match_parent` height). |
 | `FEED` | Sponsored-post styling (icon + advertiser header, headline, media, body, CTA) for content feeds. |
 | `SPOTLIGHT` | Centred composition (icon, headline, rating, body, media, CTA) for dialogs / empty states. |
 | `ACTION_TOP` | CTA pinned at the top, with icon, headline, advertiser, rating, body and media below it. |
@@ -675,6 +676,36 @@ Select any by name from XML (`app:ngad_template="hero"`) or in code (`NativeTemp
 templates use a ripple CTA, an "Ad" attribution badge and Roboto typography. The creative templates
 (`HERO`, `FEED`, `SPOTLIGHT`, `ACTION_TOP`, `STACKED`) ship no shimmer XML — one is auto-generated
 from the layout.
+
+#### Ad colours follow your app
+
+Every template's surfaces and body text already resolve from your Material3 theme
+(`?attr/colorSurface`, `?attr/colorOnSurface` …). The **CTA button** and **"Ad" badge** now do too:
+they read a `ngad_*` palette supplied by a theme overlay applied to every ad view as it inflates, so
+by default the CTA follows `colorPrimary`/`colorOnPrimary` and the badge follows
+`colorSecondaryContainer`/`colorOnSecondaryContainer`. Ads match your app with zero setup.
+
+Re-colour **all** ads in one place — do it once, before your first ad shows:
+
+```kotlin
+// Your own palette (define a ThemeOverlay that sets any ngad_* attrs you want):
+NextGenAdsConfig.adThemeOverlay = R.style.MyAdOverlay
+// …or restore the original fixed blue CTA / amber badge:
+NextGenAdsConfig.adThemeOverlay = R.style.ThemeOverlay_NextGenAds_Brand
+```
+
+```xml
+<!-- res/values/themes.xml — a custom overlay -->
+<style name="MyAdOverlay" parent="">
+    <item name="ngad_ctaColor">@color/my_brand</item>
+    <item name="ngad_ctaTextColor">@color/white</item>
+    <item name="ngad_adBadgeColor">?attr/colorTertiaryContainer</item>
+    <item name="ngad_adBadgeTextColor">?attr/colorOnTertiaryContainer</item>
+</style>
+```
+
+Palette attrs: `ngad_ctaColor`, `ngad_ctaTextColor`, `ngad_ctaRippleColor`, `ngad_adBadgeColor`,
+`ngad_adBadgeTextColor`.
 
 ### Your own custom template
 
@@ -1285,7 +1316,7 @@ com.alihassan.nextgenads
 ├── banner.BannerCollapsible            // TOP, BOTTOM
 ├── banner.BannerSize                   // ADAPTIVE, ADAPTIVE_INLINE, BANNER, LARGE_BANNER, FULL_BANNER, LEADERBOARD, MEDIUM_RECTANGLE
 ├── nativead.NativeAdHelper             // native loading + cache, preload/populate/load, clear()
-├── nativead.NativeTemplate             // 12 templates (SMALL … STACKED)
+├── nativead.NativeTemplate             // 13 templates (SMALL … STACKED)
 ├── nativead.NativeTemplateView         // renders a NativeTemplate or a custom layout (setCustomTemplate)
 ├── nativead.ShimmerSkeleton            // fromLayout(context, layout) → auto shimmer
 ├── interstitial.Interstitials          // registry → InterstitialAdHelper (showEvery / showFirstThenEvery)

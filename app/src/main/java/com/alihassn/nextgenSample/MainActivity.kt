@@ -135,8 +135,8 @@ class MainActivity : AppCompatActivity() {
 
         // 3. Native.
         findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { warmNativeAdCache() }
-        findViewById<Button>(R.id.btnShowNative).setOnClickListener { loadAndDisplayNativeAd() }
-        findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { loadAndDisplayNativeAd() }
+        findViewById<Button>(R.id.btnShowNative).setOnClickListener { showPreloadedNative() }
+        findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { loadAndShowNative() }
         findViewById<Button>(R.id.btnCustomNative).setOnClickListener {
             startActivity(Intent(this, CustomNativeActivity::class.java))
         }
@@ -272,6 +272,7 @@ class MainActivity : AppCompatActivity() {
         R.id.rbMediaLeft -> NativeTemplate.MEDIA_LEFT
         R.id.rbCollapsible -> NativeTemplate.COLLAPSIBLE
         R.id.rbHero -> NativeTemplate.HERO
+        R.id.rbFullscreen -> NativeTemplate.FULLSCREEN
         R.id.rbFeed -> NativeTemplate.FEED
         R.id.rbSpotlight -> NativeTemplate.SPOTLIGHT
         R.id.rbActionTop -> NativeTemplate.ACTION_TOP
@@ -315,17 +316,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Loads an ad into the single [BannerNativeView] based on the selected ad type — a banner, or a
-     * native ad rendered with the chosen template (instant if preloaded, otherwise on demand).
+     * "Show preloaded native" — binds a preloaded ad into the unified [BannerNativeView]
+     * **instantly** when the cache is warm, falling back to an on-demand load when it isn't. This is
+     * the *show* path: the fast, cache-first one you'd wire to a real placement.
+     *
+     * Contrast [loadAndShowNative], the *load-and-show* path, which always fetches a fresh ad first.
      */
-    private fun loadAndDisplayNativeAd() {
+    private fun showPreloadedNative() = displayUnifiedAd(forceFresh = false)
+
+    /**
+     * "Load & show native on demand" — drops any cached native ad, then loads a **fresh** one before
+     * showing it, so this button always demonstrates a cold load-and-show (never an instant cache
+     * hit). Slower by design; use [showPreloadedNative] for the cache-first path.
+     */
+    private fun loadAndShowNative() = displayUnifiedAd(forceFresh = true)
+
+    /**
+     * Shared core for the unified [BannerNativeView], selecting banner vs native from the ad-type
+     * toggle. [forceFresh] `false` shows a preloaded ad instantly (else loads on demand); `true`
+     * clears the native cache first so the ad is always freshly loaded — the one behavioural
+     * difference between the "Show preloaded" and "Load & show on demand" buttons.
+     */
+    private fun displayUnifiedAd(forceFresh: Boolean) {
         if (!ensureSdkInitialized()) return
         val adType = selectedAdType()
         val allowed = if (adType == AdType.BANNER) AdsConfig.banner else AdsConfig.native
         if (!ensureRemoteEnabled(allowed, if (adType == AdType.BANNER) "Banner" else "Native")) return
+        val verb = if (forceFresh) "Loading & showing" else "Showing preloaded"
         if (adType == AdType.BANNER) {
             val size = selectedBannerSize()
-            setStatus("Showing banner (unified view, ${size.name.lowercase()})…")
+            setStatus("$verb banner (unified view, ${size.name.lowercase()})…")
             nativeAdView.load(
                 adUnitId = AdUnits.BANNER,
                 remoteEnabled = AdsConfig.banner,
@@ -336,14 +356,19 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
+        // Fresh path: evict the preloaded native so populate() can't bind it — forces a real load.
+        if (forceFresh) NativeAdHelper.clear(AdUnits.NATIVE)
         val template = selectedTemplate()
-        setStatus("Showing native (${template.name.lowercase()})…")
+        setStatus("$verb native (${template.name.lowercase()})…")
         nativeAdView.load(
             adUnitId = AdUnits.NATIVE,
             remoteEnabled = AdsConfig.native,
             adType = AdType.NATIVE,
             nativeTemplate = template,
-            onLoaded = { setStatus("Native shown ✓ (${template.name.lowercase()})") },
+            onLoaded = {
+                val how = if (forceFresh) "loaded & shown" else "shown"
+                setStatus("Native $how ✓ (${template.name.lowercase()})")
+            },
             onFailed = { setStatus("Native failed to load") },
         )
     }

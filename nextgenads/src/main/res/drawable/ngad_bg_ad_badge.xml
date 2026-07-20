@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- "Ad" badge backing. Colour comes from the ngad_adBadgeColor palette attribute (supplied by the
+     ThemeOverlay in NgadTheme), so it follows the app theme / any app-wide override. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/ngad_ad_badge" />
+    <solid android:color="?attr/ngad_adBadgeColor" />
     <corners android:radius="4dp" />
 </shape>

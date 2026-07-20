@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
+import com.alihassan.nextgenads.nativead.NgadTheme
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -473,7 +474,7 @@ class AppOpenAdHelper(private val adUnitId: String) {
             AppOpenCoverStyle.WELCOME -> R.layout.ngad_view_appopen_welcome
             AppOpenCoverStyle.LOADING -> R.layout.ngad_view_ad_loading
         }
-        val view = LayoutInflater.from(activity).inflate(layoutRes, root, false)
+        val view = LayoutInflater.from(NgadTheme.wrap(activity)).inflate(layoutRes, root, false)
         setOverlayText(view, caption)
         // Branding is Welcome-only; the plain LOADING cover is just a spinner + caption.
         if (style == AppOpenCoverStyle.WELCOME) {

@@ -42,12 +42,14 @@ object ShimmerSkeleton {
      */
     @JvmStatic
     fun fromLayout(context: Context, @LayoutRes layout: Int): ShimmerFrameLayout {
-        val shimmer = ShimmerFrameLayout(context)
+        // Inflate through the ad palette overlay so any ngad_* colours in the source layout resolve.
+        val themed = NgadTheme.wrap(context)
+        val shimmer = ShimmerFrameLayout(themed)
         shimmer.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         )
-        val content = LayoutInflater.from(context).inflate(layout, shimmer, false)
+        val content = LayoutInflater.from(themed).inflate(layout, shimmer, false)
         skeletonize(content)
         shimmer.addView(content)
         return shimmer

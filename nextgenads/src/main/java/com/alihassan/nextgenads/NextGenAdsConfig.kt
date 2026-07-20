@@ -1,5 +1,6 @@
 package com.alihassan.nextgenads
 
+import androidx.annotation.StyleRes
 import kotlin.reflect.KProperty
 
 /**
@@ -192,6 +193,37 @@ object NextGenAdsConfig {
     @JvmStatic
     @Volatile
     var appOpenLoadTimeoutMs: Long = 5_000L
+
+    // ---------------------------------------------------------------------------------------------
+    // Ad appearance
+    //
+    // A ThemeOverlay applied to every ad view as it inflates (native templates, shimmer placeholders
+    // and the loading / "Welcome back" covers). It supplies the `ngad_*` palette attributes those
+    // layouts and drawables resolve, so it re-colours the CTA button and "Ad" badge across ALL ads
+    // in one place. See NgadTheme and res/values/ngad_themes.xml.
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Theme overlay used to colour every ad view. Defaults to `R.style.ThemeOverlay_NextGenAds`,
+     * which maps the CTA button and "Ad" badge to the host app's Material3 tokens
+     * (`colorPrimary` / `colorSecondaryContainer` …) so ads follow the app's colours automatically.
+     *
+     * Point this at your own overlay to re-style **all** ads at once (do it once, e.g. from
+     * `Application.onCreate`, before your first ad shows):
+     *
+     * ```
+     * NextGenAdsConfig.adThemeOverlay = R.style.ThemeOverlay_NextGenAds_Brand   // fixed blue/amber
+     * // …or your own:
+     * NextGenAdsConfig.adThemeOverlay = R.style.MyAdOverlay
+     * ```
+     *
+     * Set to `0` to apply no overlay — the templates then resolve the `ngad_*` attrs straight from
+     * the host theme, which must define them itself (otherwise inflation fails).
+     */
+    @JvmStatic
+    @Volatile
+    @StyleRes
+    var adThemeOverlay: Int = R.style.ThemeOverlay_NextGenAds
 }
 
 /**

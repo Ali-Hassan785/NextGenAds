@@ -12,8 +12,12 @@
       styling those Material tokens in your app theme; requires a Material3 (or MaterialComponents)
       theme on the host.
 
-      Only the brand-fixed accents below are static — they read correctly on both light and dark
-      surfaces, so they don't vary by theme. Override any of them in your app's colors.xml.
+      The CTA button and "Ad" badge no longer read these @color values directly: they resolve the
+      ngad_* palette attributes (see ngad_themes.xml / ngad_attrs.xml), which the DEFAULT overlay
+      (ThemeOverlay.NextGenAds) maps to the host's Material3 tokens — so those follow the app too. The
+      static values below are the *brand* fallback used by ThemeOverlay.NextGenAds.Brand (opt-in via
+      NextGenAdsConfig.adThemeOverlay) and as the ripple default. Override any of them in your app's
+      colors.xml, or override the ngad_* attrs to re-colour every ad in one place.
     -->
     <color name="ngad_cta">#FF2563EB</color>
     <color name="ngad_cta_text">#FFFFFFFF</color>

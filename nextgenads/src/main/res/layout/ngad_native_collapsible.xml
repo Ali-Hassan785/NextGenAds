@@ -36,7 +36,7 @@
                 android:paddingRight="6dp"
                 android:paddingBottom="2dp"
                 android:text="@string/ngad_ad_badge_label"
-                android:textColor="@color/ngad_ad_badge_text"
+                android:textColor="?attr/ngad_adBadgeTextColor"
                 android:textSize="10sp" />
 
             <TextView
@@ -144,7 +144,7 @@
                 android:paddingBottom="11dp"
                 android:text="@string/ngad_cta_default"
                 android:textAllCaps="false"
-                android:textColor="@color/ngad_cta_text"
+                android:textColor="?attr/ngad_ctaTextColor"
                 android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>

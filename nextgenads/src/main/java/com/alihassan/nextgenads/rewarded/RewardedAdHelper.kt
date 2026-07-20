@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
+import com.alihassan.nextgenads.nativead.NgadTheme
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -431,7 +432,7 @@ class RewardedAdHelper(private val adUnitId: String) {
      */
     private fun showLoadingOverlay(activity: Activity, caption: CharSequence): View? = runCatching {
         val root = activity.window?.decorView as? ViewGroup ?: return null
-        val view = LayoutInflater.from(activity).inflate(R.layout.ngad_view_ad_loading, root, false)
+        val view = LayoutInflater.from(NgadTheme.wrap(activity)).inflate(R.layout.ngad_view_ad_loading, root, false)
         setOverlayText(view, caption)
         view.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,

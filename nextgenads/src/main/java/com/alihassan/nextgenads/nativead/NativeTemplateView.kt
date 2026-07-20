@@ -131,7 +131,9 @@ class NativeTemplateView @JvmOverloads constructor(
         boundAd?.destroy()
         boundAd = null
 
-        val inflater = LayoutInflater.from(context)
+        // Inflate through the ad palette overlay so the templates' ngad_* CTA/badge colours resolve
+        // (and follow the app / any app-wide override). See NgadTheme / NextGenAdsConfig.adThemeOverlay.
+        val inflater = LayoutInflater.from(NgadTheme.wrap(context))
         val adView = inflater.inflate(layout, this, false) as? NativeAdView
             ?: throw IllegalArgumentException(
                 "NativeTemplateView: the template layout's root must be a " +

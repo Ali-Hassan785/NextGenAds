@@ -68,5 +68,5 @@
         android:layout_gravity="center_horizontal|bottom"
         android:layout_marginBottom="56dp"
         android:indeterminate="true"
-        android:indeterminateTint="@color/ngad_cta" />
+        android:indeterminateTint="?attr/ngad_ctaColor" />
 </FrameLayout>

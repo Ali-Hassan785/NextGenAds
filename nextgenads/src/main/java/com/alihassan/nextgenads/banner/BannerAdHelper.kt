@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
+import com.alihassan.nextgenads.nativead.NgadTheme
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -306,7 +307,7 @@ object BannerAdHelper {
             R.layout.ngad_shimmer_banner
         }
 
-        val shimmer = LayoutInflater.from(activity)
+        val shimmer = LayoutInflater.from(NgadTheme.wrap(activity))
             .inflate(shimmerLayout, container, false) as ShimmerFrameLayout
         destroyBannerChildren(container) // release any banner this placement was showing before
         container.removeAllViews()

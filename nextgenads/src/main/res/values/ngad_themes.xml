@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Ad palette overlays. One of these is applied to every ad view as it inflates (via NgadTheme,
+      selected by NextGenAdsConfig.adThemeOverlay), so it supplies the ngad_* palette attributes the
+      templates, drawables and covers resolve. Re-colour ALL ads in one place by pointing
+      `NextGenAdsConfig.adThemeOverlay` at your own overlay (copy either style below and change the
+      items you want), or by overriding the individual ngad_* attrs in your app theme.
+    -->
+
+    <!-- DEFAULT — CTA + badge follow the host app's Material3 colours, so every ad template matches
+         the app out of the box. Requires a Material3 / MaterialComponents theme on the host (which
+         the surfaces and body text already assume). -->
+    <style name="ThemeOverlay.NextGenAds" parent="">
+        <item name="ngad_ctaColor">?attr/colorPrimary</item>
+        <item name="ngad_ctaTextColor">?attr/colorOnPrimary</item>
+        <item name="ngad_ctaRippleColor">@color/ngad_cta_ripple</item>
+        <item name="ngad_adBadgeColor">?attr/colorSecondaryContainer</item>
+        <item name="ngad_adBadgeTextColor">?attr/colorOnSecondaryContainer</item>
+    </style>
+
+    <!-- Opt-in — the original fixed brand accents (blue CTA, amber badge), independent of the app
+         theme. Restore them app-wide with:
+             NextGenAdsConfig.adThemeOverlay = R.style.ThemeOverlay_NextGenAds_Brand -->
+    <style name="ThemeOverlay.NextGenAds.Brand" parent="">
+        <item name="ngad_ctaColor">@color/ngad_cta</item>
+        <item name="ngad_ctaTextColor">@color/ngad_cta_text</item>
+        <item name="ngad_ctaRippleColor">@color/ngad_cta_ripple</item>
+        <item name="ngad_adBadgeColor">@color/ngad_ad_badge</item>
+        <item name="ngad_adBadgeTextColor">@color/ngad_ad_badge_text</item>
+    </style>
+</resources>

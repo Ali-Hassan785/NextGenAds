@@ -5,6 +5,21 @@
          missing value falls back to MEDIUM. -->
     <attr name="ngad_template" format="string" />
 
+    <!-- ============================================================================================
+         Ad palette — theme attributes that colour every ad template's CTA button and "Ad" badge.
+         They are resolved through a ThemeOverlay applied to every ad view at inflation (see
+         NgadTheme / NextGenAdsConfig.adThemeOverlay), so you re-colour ALL ads in one place:
+           • swap the overlay:  NextGenAdsConfig.adThemeOverlay = R.style.MyAdOverlay
+           • or override these attrs in that overlay / your app theme.
+         The shipped default (ThemeOverlay.NextGenAds) points them at your Material3 tokens, so ads
+         follow the host app's colours out of the box. Surfaces, body text and media backings already
+         resolve from Material3 tokens directly. -->
+    <attr name="ngad_ctaColor" format="color" />
+    <attr name="ngad_ctaTextColor" format="color" />
+    <attr name="ngad_ctaRippleColor" format="color" />
+    <attr name="ngad_adBadgeColor" format="color" />
+    <attr name="ngad_adBadgeTextColor" format="color" />
+
     <declare-styleable name="NativeTemplateView">
         <attr name="ngad_template" />
         <!-- Optional caller-supplied native layout (root must be a NativeAdView). When set, it

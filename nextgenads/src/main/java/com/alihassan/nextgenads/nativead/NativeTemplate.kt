@@ -17,6 +17,10 @@ import com.alihassan.nextgenads.R
  *   compact ad.
  * - [HERO]        – cinematic full-width media up top with the "Ad" badge overlaid, then icon +
  *   headline, body and a bold CTA. Great for splash / interstitial-style placements.
+ * - [FULLSCREEN]  – a full-height card: the media stretches to fill all the leftover vertical space
+ *   (with the "Ad" badge overlaid), then icon + headline/advertiser, rating, body and a bold CTA
+ *   pinned to the bottom. For full-screen slots — a host that gives the `NativeTemplateView`
+ *   `match_parent` height (splash / interstitial-style screens). Ships its own shimmer.
  * - [FEED]        – sponsored-post styling: icon + advertiser header, headline, media, body, CTA —
  *   drops naturally into a content feed.
  * - [SPOTLIGHT]   – centred composition (icon, headline, rating, body, media, CTA all centred) for
@@ -43,6 +47,9 @@ enum class NativeTemplate(
 
     // Creative templates — shimmer auto-generated from the layout (no shimmer XML needed).
     HERO(R.layout.ngad_native_hero),
+    // Full-height card: media fills the leftover space, so it ships its own shimmer (a weighted
+    // media block would collapse under the auto-generated wrap-height skeleton).
+    FULLSCREEN(R.layout.ngad_native_fullscreen, R.layout.ngad_shimmer_native_fullscreen),
     FEED(R.layout.ngad_native_feed),
     SPOTLIGHT(R.layout.ngad_native_spotlight),
     ACTION_TOP(R.layout.ngad_native_action_top),

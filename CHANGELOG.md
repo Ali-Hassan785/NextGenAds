@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-20
+
+### Added
+- **`FULLSCREEN` native template** — a full-height card whose media stretches to fill the leftover
+  vertical space, with icon + headline/advertiser, rating, body and a bold CTA pinned to the bottom.
+  For full-screen slots (a host that gives the `NativeTemplateView` `match_parent` height). Ships its
+  own shimmer. Select with `app:ngad_template="fullscreen"` or `NativeTemplate.FULLSCREEN`.
+- **App-colour theming for ads** — every ad template's CTA button and "Ad" badge now resolve a
+  `ngad_*` palette from a theme overlay applied at inflation, so ads follow the host app's Material3
+  colours out of the box. Re-colour **all** ads in one place with
+  `NextGenAdsConfig.adThemeOverlay = R.style.MyAdOverlay`, or restore the fixed blue/amber accents
+  with the shipped `ThemeOverlay.NextGenAds.Brand`. (Surfaces and body text already followed the
+  app theme.)
+
+### Changed
+- Sample app: the native section's **Show preloaded native** and **Load & show native on demand**
+  buttons now do what their labels say — the first binds a preloaded ad instantly (else loads on
+  demand), the second always evicts the cache and loads a fresh ad — instead of both running the
+  same handler.
+
 ## [1.0.0] - 2026-07-16
 
 Initial release.
