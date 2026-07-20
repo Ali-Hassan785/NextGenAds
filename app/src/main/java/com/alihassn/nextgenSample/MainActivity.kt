@@ -278,6 +278,7 @@ class MainActivity : AppCompatActivity() {
         R.id.rbActionTop -> NativeTemplate.ACTION_TOP
         R.id.rbHalfMedia -> NativeTemplate.HALF_MEDIA
         R.id.rbStacked -> NativeTemplate.STACKED
+        R.id.rbTitleOnly -> NativeTemplate.TITLE_ONLY
         else -> NativeTemplate.MEDIUM
     }
 

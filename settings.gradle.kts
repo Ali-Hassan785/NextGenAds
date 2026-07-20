@@ -36,4 +36,3 @@ rootProject.name = "NextGenSample"
 include(":app")
 include(":nextgenads")
 include(":nextgenadscompose")
-include(":nextgenadscompose")

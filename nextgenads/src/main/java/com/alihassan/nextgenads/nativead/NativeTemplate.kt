@@ -33,6 +33,9 @@ import com.alihassan.nextgenads.R
  *   A compact, list-friendly card that still shows sizeable media.
  * - [STACKED]     – a compact card: the small "Ad" badge and headline on top, then a full-width
  *   120dp media, then a full-width CTA at the bottom. No icon or body.
+ * - [TITLE_ONLY]  – a title-forward card: the "Ad" badge on the left with the headline beside it on
+ *   top, then the media below the title, then a full-width CTA at the bottom. No icon, body,
+ *   advertiser or rating — the leanest media card.
  */
 enum class NativeTemplate(
     @field:LayoutRes @get:LayoutRes val layout: Int,
@@ -54,16 +57,28 @@ enum class NativeTemplate(
     SPOTLIGHT(R.layout.ngad_native_spotlight),
     ACTION_TOP(R.layout.ngad_native_action_top),
     HALF_MEDIA(R.layout.ngad_native_half_media,R.layout.ngad_shimmer_native_half_media),
-    STACKED(R.layout.ngad_native_stacked);
+    STACKED(R.layout.ngad_native_stacked),
+    TITLE_ONLY(R.layout.ngad_native_titleonly);
 
     companion object {
         /**
-         * Resolves an `ngad_template` value by name (case-insensitive, e.g. `"hero"` → [HERO]),
-         * falling back to [MEDIUM] for a `null` or unrecognised name. Name-based so templates are
-         * referenced by their enum name rather than a brittle integer index.
+         * Resolves an `ngad_template` value by name, falling back to [MEDIUM] for a `null` or
+         * unrecognised name. Name-based so templates are referenced by their enum name rather than a
+         * brittle integer index.
+         *
+         * Matching is case-insensitive and separator-insensitive, so `"hero"`, `"TITLE_ONLY"`,
+         * `"title_only"`, `"title-only"` and `"titleonly"` all resolve — any non-alphanumeric
+         * characters (`_`, `-`, spaces) are ignored on both sides.
          */
         @JvmStatic
-        fun fromName(name: String?): NativeTemplate =
-            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: MEDIUM
+        fun fromName(name: String?): NativeTemplate {
+            if (name == null) return MEDIUM
+            val key = name.normalizeTemplateName()
+            return entries.firstOrNull { it.name.normalizeTemplateName() == key } ?: MEDIUM
+        }
+
+        /** Lower-cases and strips every non-alphanumeric char, so `"TITLE_ONLY"` == `"titleonly"`. */
+        private fun String.normalizeTemplateName(): String =
+            lowercase().filter { it.isLetterOrDigit() }
     }
 }

@@ -631,7 +631,7 @@ otherwise it hides itself. It shows a shimmer while loading and prefers a cached
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `app:ngad_ad_type` | `banner`, `nativead` | `nativead` |
-| `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `fullscreen`, `feed`, `spotlight`, `action_top`, `half_media`, `stacked` | `medium` |
+| `app:ngad_template` | any template name — `small`, `medium`, `large`, `banner`, `media_left`, `collapsible`, `hero`, `fullscreen`, `feed`, `spotlight`, `action_top`, `half_media`, `stacked`, `title_only` | `medium` |
 | `app:ngad_banner_size` | banner size name (used when `ngad_ad_type="banner"`) — `adaptive`, `adaptive_inline`, `banner`, `large_banner`, `full_banner`, `leaderboard`, `medium_rectangle` | `adaptive` |
 | `app:ngad_customLayout` | a `@layout` reference (overrides `ngad_template`) | — |
 | `app:ngad_customShimmer` | a `@layout` reference (else auto-generated) | — |
@@ -671,6 +671,7 @@ NativeAdHelper.clear(AdUnits.NATIVE)   // or clear() for all units
 | `ACTION_TOP` | CTA pinned at the top, with icon, headline, advertiser, rating, body and media below it. |
 | `HALF_MEDIA` | Card split ~50/50: media on the left half, headline + advertiser + rating + body + CTA on the right. |
 | `STACKED` | Compact card: "Ad" badge + headline on top, a full-width 120dp media, then a full-width CTA. |
+| `TITLE_ONLY` | Title-forward card: "Ad" badge on the left with the headline beside it, media below the title, full-width CTA at the bottom. No icon, body, advertiser or rating. |
 
 Select any by name from XML (`app:ngad_template="hero"`) or in code (`NativeTemplate.HERO`). All
 templates use a ripple CTA, an "Ad" attribution badge and Roboto typography. The creative templates
@@ -1316,7 +1317,7 @@ com.alihassan.nextgenads
 ├── banner.BannerCollapsible            // TOP, BOTTOM
 ├── banner.BannerSize                   // ADAPTIVE, ADAPTIVE_INLINE, BANNER, LARGE_BANNER, FULL_BANNER, LEADERBOARD, MEDIUM_RECTANGLE
 ├── nativead.NativeAdHelper             // native loading + cache, preload/populate/load, clear()
-├── nativead.NativeTemplate             // 13 templates (SMALL … STACKED)
+├── nativead.NativeTemplate             // 14 templates (SMALL … TITLE_ONLY)
 ├── nativead.NativeTemplateView         // renders a NativeTemplate or a custom layout (setCustomTemplate)
 ├── nativead.ShimmerSkeleton            // fromLayout(context, layout) → auto shimmer
 ├── interstitial.Interstitials          // registry → InterstitialAdHelper (showEvery / showFirstThenEvery)
