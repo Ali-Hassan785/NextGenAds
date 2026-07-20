@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-20
+
+### Added
+- **`TITLE_ONLY` native template** — a title-forward card: the "Ad" badge on the left with the
+  headline beside it on top, the media below the title, and a full-width CTA at the bottom. No icon,
+  body, advertiser or rating. Select with `app:ngad_template="titleonly"` or
+  `NativeTemplate.TITLE_ONLY`.
+- `NativeTemplate.fromName` is now **separator-insensitive** — `"titleonly"`, `"title_only"` and
+  `"title-only"` all resolve (any non-alphanumeric characters are ignored), for every template name.
+
+### Changed
+- `HALF_MEDIA` template retuned: tighter padding and margins, bold headline, hidden rating, and
+  media/CTA height tweaks.
+- Removed a duplicate `:nextgenadscompose` include in `settings.gradle.kts`.
+
 ## [1.6.0] - 2026-07-20
 
 ### Added
