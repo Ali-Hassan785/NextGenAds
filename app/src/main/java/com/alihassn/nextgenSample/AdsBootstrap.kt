@@ -28,6 +28,11 @@ object AdsBootstrap {
         NextGenAds.registerEventListener(FirebaseAdEventListener(app))
         NextGenAds.registerEventListener(SampleApp.showRate)
 
+        // Debug-only: trace every lifecycle event of every ad format to Logcat
+        // (`adb logcat -s NextGenAdsEvents`). Complements the library's own internal logging
+        // (NextGenAds.loggingEnabled, on by default). Skipped entirely in release.
+        if (BuildConfig.DEBUG) NextGenAds.registerEventListener(LoggingAdEventListener())
+
         // Debug-only diagnostics: shake the device (any screen) for the live report. Needs no
         // manifest permission — the accelerometer is permission-free. Unlike SampleApp.showRate
         // (which groups by format for MainActivity's table), this one is tallied PER UNIT, so units

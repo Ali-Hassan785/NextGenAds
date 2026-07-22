@@ -433,6 +433,16 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Title only" />
+
+                    <!-- Requests a native ad WITHOUT media: square aspect ratio + no media download
+                         (NativeAdManager.loadNativeAd(withMedia = false)), rendered into a compact
+                         no-media template. Shows in nativeNoMediaView, not the unified nativeAdView. -->
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/rbNoMedia"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Without media" />
                 </com.google.android.material.chip.ChipGroup>
 
                 <Button
@@ -464,6 +474,17 @@
                     android:layout_marginTop="12dp"
                     app:ngad_ad_type="nativead"
                     app:ngad_template="medium" />
+
+                <!-- Renders the "Without media" ad (loaded via NativeAdManager with withMedia=false).
+                     Hidden until that chip is shown; the unified nativeAdView above handles all the
+                     media templates. -->
+                <com.alihassan.nextgenads.nativead.NativeTemplateView
+                    android:id="@+id/nativeNoMediaView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:ngad_template="small" />
 
                 <Button
                     android:id="@+id/btnCustomNative"

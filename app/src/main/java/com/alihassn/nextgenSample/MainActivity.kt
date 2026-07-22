@@ -39,6 +39,7 @@ import com.alihassan.nextgenads.nativead.NativeAdPreloader
 import com.alihassan.nextgenads.rewarded.RewardedAds
 import com.alihassan.nextgenads.rewardedinterstitial.RewardedInterstitials
 import com.alihassan.nextgenads.nativead.NativeTemplate
+import com.alihassan.nextgenads.nativead.NativeTemplateView
 import com.alihassan.nextgenads.update.InAppUpdateManager
 import com.alihassan.nextgenads.update.UpdateType
 
@@ -48,10 +49,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statsTable: TableLayout
     private lateinit var bannerContainer: FrameLayout
     private lateinit var nativeAdView: BannerNativeView
+    /** Standalone slot for the "Without media" demo — bound with a raw ad from [noMediaManager]. */
+    private lateinit var nativeNoMediaView: NativeTemplateView
     private lateinit var templateGroup: ChipGroup
     private lateinit var adTypeGroup: RadioGroup
     private lateinit var bannerSizeGroup: ChipGroup
     private lateinit var collapsibleCheck: CheckBox
+
+    /** One-shot loader for the "Without media" demo (request-level `withMedia = false`). */
+    private val noMediaManager = NativeAdManager()
 
     /** Total clicks on the counter-interstitial button — drives the "1st, then every 4th" gate. */
     private var counterClicks = 0
@@ -115,6 +121,7 @@ class MainActivity : AppCompatActivity() {
 
         bannerContainer = findViewById(R.id.bannerContainer)
         nativeAdView = findViewById(R.id.nativeAdView)
+        nativeNoMediaView = findViewById(R.id.nativeNoMediaView)
         templateGroup = findViewById(R.id.rgTemplate)
         adTypeGroup = findViewById(R.id.rgAdType)
         bannerSizeGroup = findViewById(R.id.rgBannerSize)
@@ -344,6 +351,9 @@ class MainActivity : AppCompatActivity() {
         val allowed = if (adType == AdType.BANNER) AdsConfig.banner else AdsConfig.native
         if (!ensureRemoteEnabled(allowed, if (adType == AdType.BANNER) "Banner" else "Native")) return
         val verb = if (forceFresh) "Loading & showing" else "Showing preloaded"
+        // Hide the standalone no-media slot for every path except the "Without media" chip below,
+        // which re-shows it. Covers switching to a banner or a media template.
+        hideNoMediaSlot()
         if (adType == AdType.BANNER) {
             val size = selectedBannerSize()
             setStatus("$verb banner (unified view, ${size.name.lowercase()})…")
@@ -357,6 +367,13 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
+        // "Without media" chip: a request-level withMedia=false load via NativeAdManager, shown in
+        // its own slot instead of the unified view (which always requests media).
+        if (templateGroup.checkedChipId == R.id.rbNoMedia) {
+            showNativeWithoutMedia()
+            return
+        }
+
         // Fresh path: evict the preloaded native so populate() can't bind it — forces a real load.
         if (forceFresh) NativeAdHelper.clear(AdUnits.NATIVE)
         val template = selectedTemplate()
@@ -372,6 +389,50 @@ class MainActivity : AppCompatActivity() {
             },
             onFailed = { setStatus("Native failed to load") },
         )
+    }
+
+    /**
+     * "Without media" demo: loads a native ad with [NativeAdManager.loadNativeAd]'s `withMedia = false`
+     * and binds it into [nativeNoMediaView], a compact template with no `MediaView`. The icon,
+     * headline, body and CTA still download and render — "without media" only means the template
+     * shows no `MediaView`, not that assets are skipped. Both native show buttons route here while the
+     * chip is selected, so each tap issues a fresh, self-healing (retrying) load — no cache for this
+     * slot.
+     */
+    private fun showNativeWithoutMedia() {
+        if (!ensureSdkInitialized() || !ensureRemoteEnabled(AdsConfig.native, "Native")) return
+        // NativeAdManager is a raw loader (no premium/kill-switch gate of its own), so mirror the
+        // check NativeAdHelper.populate does — otherwise this slot would still show under premium.
+        if (!NextGenAds.canShowAds(AdFormat.NATIVE)) {
+            hideNoMediaSlot()
+            setStatus("Native disabled (premium / format off)")
+            return
+        }
+        nativeAdView.visibility = View.GONE // free the unified slot's screen space
+        nativeNoMediaView.visibility = View.VISIBLE
+        nativeNoMediaView.showShimmer()
+        setStatus("Loading native without media…")
+        noMediaManager.loadNativeAd(
+            adUnitId = AdUnits.NATIVE,
+            withMedia = false,
+            onAdLoaded = { ad ->
+                nativeNoMediaView.setNativeAd(ad)
+                setStatus("Native without media shown ✓ (hasMedia=${noMediaManager.hasMedia()})")
+            },
+            onAdFailed = { error ->
+                nativeNoMediaView.showError()
+                setStatus("Native without media failed: ${error.message}")
+            },
+        )
+    }
+
+    /**
+     * Hides the standalone "Without media" slot when a media template is shown instead. Only hides
+     * (doesn't destroy): the manager and view must stay reusable so the chip can be shown again. The
+     * held ad is released on the next no-media load (which replaces it) or in [onDestroy].
+     */
+    private fun hideNoMediaSlot() {
+        nativeNoMediaView.visibility = View.GONE
     }
 
     // --- 4. Interstitial ---------------------------------------------------
@@ -708,6 +769,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         NextGenAds.unregisterEventListener(statsListener)
         nativeAdView.destroy()
+        noMediaManager.destroy()
+        nativeNoMediaView.destroy()
         super.onDestroy()
     }
 
