@@ -315,6 +315,8 @@
                         android:text="Banner" />
                 </RadioGroup>
 
+                <!-- Native templates (no MediaView): loaded via NativeAdManager (withMedia = false)
+                     into managedNativeView. -->
                 <TextView
                     style="@style/Text.NextGen.Label"
                     android:layout_width="wrap_content"
@@ -322,11 +324,8 @@
                     android:layout_marginTop="12dp"
                     android:text="Template" />
 
-                <!-- ChipGroup wraps to multiple lines, so every template is visible at once
-                     (a horizontal RadioGroup pushed Hero/Feed/Spotlight off-screen). singleSelection
-                     + selectionRequired gives the same one-of-N behaviour as a RadioGroup. -->
                 <com.google.android.material.chip.ChipGroup
-                    android:id="@+id/rgTemplate"
+                    android:id="@+id/rgTemplateNoMedia"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
@@ -340,22 +339,8 @@
                         style="@style/Widget.Material3.Chip.Filter"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Small" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbMedium"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
                         android:checked="true"
-                        android:text="Medium" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbLarge"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Large" />
+                        android:text="Small" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/rbBanner"
@@ -363,86 +348,6 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Banner" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbMediaLeft"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Media-left" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbCollapsible"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Collapsible" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbHero"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Hero" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbFullscreen"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Fullscreen" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbFeed"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Feed" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbSpotlight"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Spotlight" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbActionTop"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Action top" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbHalfMedia"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Half media" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbStacked"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Stacked" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbTitleOnly"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Title only" />
-
-                    <!-- Requests a native ad WITHOUT media: square aspect ratio + no media download
-                         (NativeAdManager.loadNativeAd(withMedia = false)), rendered into a compact
-                         no-media template. Shows in nativeNoMediaView, not the unified nativeAdView. -->
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/rbNoMedia"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Without media" />
                 </com.google.android.material.chip.ChipGroup>
 
                 <Button
@@ -475,11 +380,11 @@
                     app:ngad_ad_type="nativead"
                     app:ngad_template="medium" />
 
-                <!-- Renders the "Without media" ad (loaded via NativeAdManager with withMedia=false).
-                     Hidden until that chip is shown; the unified nativeAdView above handles all the
-                     media templates. -->
+                <!-- Slot bound directly by NativeAdManager for the Without-media and Adaptive native
+                     demos. Hidden until one of those runs; the unified nativeAdView above handles all
+                     the media-template chips. -->
                 <com.alihassan.nextgenads.nativead.NativeTemplateView
-                    android:id="@+id/nativeNoMediaView"
+                    android:id="@+id/managedNativeView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
@@ -501,6 +406,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Preload native → open new screen" />
+
             </LinearLayout>
 
             <!-- ===== Interstitial ===== -->
