@@ -11,7 +11,7 @@ rate** and **fill rate**. Every SDK callback is marshalled to the **main thread*
 from any callback, and the whole surface is annotated with `@JvmStatic` / `@JvmOverloads` so it reads
 naturally from **Java** as well as Kotlin.
 
-> Current version: **1.4.0**
+> Current version: **1.8.0**
 
 ---
 
@@ -114,13 +114,13 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.4.0")
+    implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads:1.8.0")
 }
 ```
 
 > **Note the group.** This repo publishes two modules (`nextgenads` and `nextgenads-compose`), so
 > each is addressed with JitPack's multi-module group `com.github.<user>.<repo>` — i.e.
-> `com.github.Ali-Hassan785.NextGenAds`. The flat `com.github.Ali-Hassan785:nextgenads:1.4.0` also
+> `com.github.Ali-Hassan785.NextGenAds`. The flat `com.github.Ali-Hassan785:nextgenads:1.8.0` also
 > resolves, but on a multi-module repo JitPack turns it into an **aggregate** that pulls in *both*
 > modules — so an XML-only app would drag in the Compose wrapper and all of Jetpack Compose. Prefer
 > the module coordinate above.
@@ -171,7 +171,7 @@ your **GitHub username** and a **Personal Access Token (classic)** with the **`r
    ```kotlin
    // app/build.gradle.kts
    dependencies {
-       implementation("com.github.Ali-Hassan785:nextgenads:1.4.0")
+       implementation("com.github.Ali-Hassan785:nextgenads:1.8.0")
    }
    ```
 
@@ -219,7 +219,7 @@ Then ask for what you want:
 > "Add an app-open ad on the splash and a banner on the main screen."
 
 Claude reads the ad units and setup you already have, and wires the rest. It's verified against
-`1.4.0` — if you're on an older version, tell it which.
+`1.8.0` — if you're on an older version, tell it which.
 
 ---
 
@@ -1053,7 +1053,7 @@ The compose artifact exposes `:nextgenads` transitively (`api`), so you only add
 
 ```kotlin
 // via JitPack — note the multi-module group (com.github.<user>.<repo>)
-implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.4.0")
+implementation("com.github.Ali-Hassan785.NextGenAds:nextgenads-compose:1.8.0")
 
 // …or as a local module
 implementation(project(":nextgenadscompose"))
