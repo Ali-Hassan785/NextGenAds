@@ -44,6 +44,12 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <!-- Live gallery of every built-in NativeTemplate, with the name to use for each. -->
+        <activity
+            android:name=".TemplateGalleryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <!-- Screen B of the cross-screen native-preload demo (warmed on MainActivity). -->
         <activity
             android:name=".PreloadedNativeActivity"

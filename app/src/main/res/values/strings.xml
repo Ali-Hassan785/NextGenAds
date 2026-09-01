@@ -2,6 +2,11 @@
     <string name="app_name">NextGen</string>
     <string name="demo_learn_more">Learn more</string>
 
+    <!-- Built-in template gallery (TemplateGalleryActivity). -->
+    <string name="gallery_title">Built-in native templates</string>
+    <string name="gallery_subtitle">Every NativeTemplate, live, with the name to use.</string>
+    <string name="gallery_reload">Reload all</string>
+
     <!-- Custom copy for the module's full-screen ad covers, applied on the helpers at startup
          (see SampleApp / MainActivity). Shows how a host project rebrands the default messages
          without touching the module. Alternatively, redeclare the ngad_* strings to override them. -->

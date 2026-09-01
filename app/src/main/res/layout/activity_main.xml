@@ -391,6 +391,15 @@
                     android:visibility="gone"
                     app:ngad_template="small" />
 
+                <!-- Every built-in NativeTemplate rendered live, labelled with the ngad_template
+                     value that selects it. -->
+                <Button
+                    android:id="@+id/btnTemplateGallery"
+                    style="@style/Widget.NextGen.Button.Ghost"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Built-in template gallery" />
+
                 <Button
                     android:id="@+id/btnCustomNative"
                     style="@style/Widget.NextGen.Button.Ghost"

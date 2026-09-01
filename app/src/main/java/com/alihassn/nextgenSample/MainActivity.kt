@@ -145,6 +145,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnPreloadNative).setOnClickListener { warmNativeAdCache() }
         findViewById<Button>(R.id.btnShowNative).setOnClickListener { showPreloadedNative() }
         findViewById<Button>(R.id.btnLoadShowNative).setOnClickListener { loadAndShowNative() }
+        findViewById<Button>(R.id.btnTemplateGallery).setOnClickListener {
+            startActivity(Intent(this, TemplateGalleryActivity::class.java))
+        }
         findViewById<Button>(R.id.btnCustomNative).setOnClickListener {
             startActivity(Intent(this, CustomNativeActivity::class.java))
         }
