@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-09-01
+
+### Changed
+- `HALF_MEDIA` template: the media is now a fixed **120dp square** instead of `0dp` +
+  `layout_weight="1"`. It previously took half the card whatever the card's width, so the media
+  stretched on wide slots; the leftover width now goes to the text column.
+- `MEDIA_LEFT` template: card padding tightened from 8dp to 4dp, to match `HALF_MEDIA`.
+
+### Added
+- Sample app: a **built-in template gallery** screen (`TemplateGalleryActivity`) rendering one live
+  ad per `NativeTemplate`, each row labelled with the enum name and the `app:ngad_template` value
+  that selects it. Rows are built from `NativeTemplate.entries`, so a template added to the library
+  appears with no edit to the demo. Reached from "Built-in template gallery" in the native section.
+
 ## [1.7.0] - 2026-07-20
 
 ### Added
