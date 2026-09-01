@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format is based on
   `layout_weight="1"`. It previously took half the card whatever the card's width, so the media
   stretched on wide slots; the leftover width now goes to the text column.
 - `MEDIA_LEFT` template: card padding tightened from 8dp to 4dp, to match `HALF_MEDIA`.
+- `nextgenads-compose` is versioned **1.8.0**, in lockstep with `nextgenads`, instead of staying on
+  its own `1.0.0` line. The two modules ship together and the Compose wrapper's POM depends on
+  `nextgenads` at the same version, so a shared number is the honest one.
 
 ### Added
 - Sample app: a **built-in template gallery** screen (`TemplateGalleryActivity`) rendering one live
