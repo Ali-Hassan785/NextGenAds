@@ -5,7 +5,6 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
-
     android:padding="4dp">
 
     <LinearLayout
@@ -15,9 +14,9 @@
 
         <!-- Left half: media (weight 1) with the "Ad" badge overlaid top-start. -->
         <FrameLayout
-            android:layout_width="0dp"
+            android:layout_width="120dp"
             android:layout_height="120dp"
-            android:layout_weight="1">
+            >
 
             <com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
                 android:id="@+id/ngad_media"

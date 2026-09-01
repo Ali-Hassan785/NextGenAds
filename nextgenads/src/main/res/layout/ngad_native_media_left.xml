@@ -3,8 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/ngad_bg_card"
-
-    android:padding="8dp">
+    android:padding="4dp">
 
     <LinearLayout
         android:layout_width="match_parent"
